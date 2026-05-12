@@ -128,13 +128,14 @@ function getCompras() {
 // =======================================================================
 // INFORME — Bancos / disponibilidades / Personal
 // =======================================================================
-// Estructura real de la hoja INFORME:
-//   - Col C: concepto (texto)
-//   - Col D: valor primario (Libre Disp en DISP FUTURAS, monto en DISPONIBILIDADES)
-//   - Col E: valor secundario (Técnico en DISP FUTURAS, fecha de venc. en
-//            DISPONIBILIDADES, monto en SALDOS DISP VW / DEUDAS EN FABRICA)
-//   - Col F: Personal — labels (NOVEDADES DEL PERSONAL / Ausentes / Tarde / nombres)
-//   - Col G: Personal — fechas/horas asociadas
+// Estructura real de la hoja INFORME (verificada con la data cruda):
+//   - Col B (index 1): concepto (texto)
+//   - Col C (index 2): valor primario (Libre Disp en DISP FUTURAS, monto en DISPONIBILIDADES)
+//   - Col D (index 3): valor secundario (Técnico en DISP FUTURAS, fecha de venc.
+//            en DISPONIBILIDADES, monto en SALDOS DISP VW / DEUDAS EN FABRICA)
+//   - Col E (index 4): Personal — texto (NOVEDADES DEL PERSONAL / Ausentes /
+//            Tarde / nombres)
+//   - Col F (index 5): Personal — fechas/horas asociadas
 //
 // Cortes:
 //   - Saldos: dejar de leer cuando el concepto contiene "rendimiento" (Rendimiento diario Fondos)
@@ -163,16 +164,16 @@ function getInforme() {
   const RE_FECHA = /^\d{1,2}\/\d{1,2}\/\d{2,4}$/;
 
   for (let i = 2; i < display.length; i++) {
-    const concepto = String(display[i][2] || '').trim();   // C
-    const dStr     = String(display[i][3] || '').trim();   // D
-    const eStr     = String(display[i][4] || '').trim();   // E
-    const dNum     = toNumber(raw[i][3]);
-    const eNum     = toNumber(raw[i][4]);
+    const concepto = String(display[i][1] || '').trim();   // B
+    const dStr     = String(display[i][2] || '').trim();   // C
+    const eStr     = String(display[i][3] || '').trim();   // D
+    const dNum     = toNumber(raw[i][2]);
+    const eNum     = toNumber(raw[i][3]);
     const lower    = concepto.toLowerCase();
 
     // Capturar el disponible VW desde:
-    //   - "TOTAL DISP" (fila 47, valor en E)
-    //   - "SALDOS DISPONIBLES VW" (valor en D)
+    //   - "TOTAL DISP" (la fila que tiene el monto)
+    //   - "SALDOS DISPONIBLES VW" (header con valor)
     if (!disponibleVW && /total\s+disp\b/i.test(concepto)) disponibleVW = dNum || eNum;
     if (!disponibleVW && /saldos\s+disponibles\s+vw/i.test(concepto)) disponibleVW = dNum || eNum;
 
@@ -211,11 +212,11 @@ function getInforme() {
   }
   while (rows.length && rows[rows.length - 1].tipo === 'sep') rows.pop();
 
-  // ===== PERSONAL (col F texto + col G fecha/hora, fila 3 en adelante) =====
+  // ===== PERSONAL (col E texto + col F fecha/hora, fila 3 en adelante) =====
   const personal = [];
   for (let i = 2; i < display.length; i++) {
-    const txt = String(display[i][5] || '').trim();   // F
-    const dat = String(display[i][6] || '').trim();   // G
+    const txt = String(display[i][4] || '').trim();   // E
+    const dat = String(display[i][5] || '').trim();   // F
     if (!txt) {
       if (personal.length && personal[personal.length - 1].tipo !== 'sep') {
         personal.push({ tipo: 'sep' });
@@ -256,6 +257,7 @@ function _clasificarFilaPersonal(texto, fecha) {
 function toNumber(v) {
   if (v === '' || v == null) return 0;
   if (typeof v === 'number') return v;
+  if (v instanceof Date) return 0;   // fechas NO son números
   const s = String(v).replace(/[^\d.,-]/g, '');
   if (!s) return 0;
   const hasComma = s.indexOf(',') > -1;
