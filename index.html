@@ -599,6 +599,7 @@ function renderCompras(data) {
   const tableHtml = renderTablaUnidades(unidades);
 
   wrap.innerHTML = cards + filtros + colFiltros + renderSelectionBar() + tableHtml;
+  syncHeadCheck();
 
   // Updated at
   if (data.updatedAt) {
@@ -647,6 +648,29 @@ function seleccionarVendidasVisibles() {
   rerenderComprasInner();
 }
 
+function toggleSelectAllVisible(cb) {
+  const visibles = getFilasVisibles().filter(u => u.impaga);
+  if (cb.checked) {
+    visibles.forEach(u => comprasSelected.add(filaKey(u)));
+  } else {
+    visibles.forEach(u => comprasSelected.delete(filaKey(u)));
+  }
+  rerenderComprasInner();
+}
+
+function syncHeadCheck() {
+  const head = document.getElementById('headCheck');
+  if (!head) return;
+  const visibles = getFilasVisibles().filter(u => u.impaga);
+  if (!visibles.length) {
+    head.checked = false; head.indeterminate = false; return;
+  }
+  const tildadas = visibles.filter(u => comprasSelected.has(filaKey(u))).length;
+  if (tildadas === 0) { head.checked = false; head.indeterminate = false; }
+  else if (tildadas === visibles.length) { head.checked = true; head.indeterminate = false; }
+  else { head.checked = false; head.indeterminate = true; }
+}
+
 function rerenderComprasInner() {
   if (!lastCompras) return;
   const wrap = document.getElementById('comprasContent');
@@ -688,6 +712,7 @@ function rerenderComprasInner() {
       btn.remove();
     }
   }
+  syncHeadCheck();
 }
 
 function renderTablaUnidades(unidades) {
@@ -773,7 +798,7 @@ function renderTablaUnidades(unidades) {
         <table>
           <thead>
             <tr>
-              <th style="width:32px"></th>
+              <th style="width:32px"><input type="checkbox" class="row-check head-check" id="headCheck" onchange="toggleSelectAllVisible(this)" title="Tildar todas las visibles"></th>
               <th>Estado</th>
               <th>Vence</th>
               <th>Fecha Fc</th>
