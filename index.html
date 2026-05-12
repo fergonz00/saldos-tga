@@ -217,10 +217,106 @@ tfoot td {
 }
 .gate-box a.btn:hover { background: var(--vw-blue-light); }
 
+.col-filters {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+  align-items: center;
+}
+.col-filters input[type="search"], .col-filters select {
+  font-family: var(--font); font-size: 13px;
+  padding: 7px 12px; border-radius: 8px;
+  border: 1px solid var(--vw-grey-2); background: white;
+  color: var(--vw-black); outline: none;
+  min-width: 0;
+}
+.col-filters input[type="search"] { flex: 1 1 200px; max-width: 280px; }
+.col-filters select { background: white; cursor: pointer; }
+.col-filters input[type="search"]:focus, .col-filters select:focus {
+  border-color: var(--vw-blue);
+}
+.col-filters .clear-btn {
+  background: transparent; color: var(--vw-grey-4);
+  font-size: 12px; padding: 6px 10px; border-radius: 6px;
+}
+.col-filters .clear-btn:hover { color: var(--red); background: var(--vw-grey-1); }
+
+.vtos-controls {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
+  align-items: center; justify-content: space-between;
+}
+.vtos-controls .group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.vtos-totalbar {
+  background: var(--vw-blue); color: white;
+  border-radius: var(--radius);
+  padding: 16px 18px; margin-bottom: 18px;
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap;
+  box-shadow: var(--shadow);
+}
+.vtos-totalbar .lbl {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+  opacity: 0.75; font-weight: 600;
+}
+.vtos-totalbar .val {
+  font-size: 22px; font-weight: 700; letter-spacing: -0.5px; margin-top: 2px;
+}
+.vtos-totalbar .sub { font-size: 12px; opacity: 0.8; margin-top: 4px; }
+.vtos-totalbar button {
+  background: rgba(255,255,255,0.15); color: white;
+  padding: 8px 14px; border-radius: 6px;
+  font-size: 13px; font-weight: 600;
+}
+.vtos-totalbar button:hover { background: rgba(255,255,255,0.28); }
+
+.vto-group {
+  background: white; border-radius: var(--radius);
+  box-shadow: var(--shadow); margin-bottom: 10px; overflow: hidden;
+  border-left: 4px solid var(--vw-grey-2);
+  transition: border-color 0.15s;
+}
+.vto-group.selected { border-left-color: var(--vw-blue); }
+.vto-group.vencida { border-left-color: var(--red); }
+.vto-group-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; cursor: pointer;
+}
+.vto-group-head:hover { background: var(--vw-grey-1); }
+.vto-group-head input[type="checkbox"] {
+  width: 18px; height: 18px; cursor: pointer; accent-color: var(--vw-blue);
+}
+.vto-group-head .date-label {
+  font-size: 15px; font-weight: 700; color: var(--vw-blue);
+  letter-spacing: -0.2px;
+  display: flex; align-items: center; gap: 8px;
+}
+.vto-group-head .date-rel {
+  font-size: 11px; padding: 2px 8px; border-radius: 100px;
+  background: var(--vw-grey-1); color: var(--vw-grey-4);
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.vto-group-head .date-rel.urgente { background: var(--red-soft); color: #991B1B; }
+.vto-group-head .date-rel.pronto { background: var(--orange-soft); color: #92400E; }
+.vto-group-head .stats {
+  margin-left: auto; display: flex; gap: 18px; align-items: center;
+  font-size: 13px;
+}
+.vto-group-head .stats .cnt { color: var(--vw-grey-4); }
+.vto-group-head .stats .amt { font-weight: 700; color: var(--vw-blue); font-variant-numeric: tabular-nums; }
+.vto-group-head .toggle { color: var(--vw-grey-3); font-size: 12px; }
+.vto-group-body { display: none; border-top: 1px solid var(--vw-grey-2); }
+.vto-group.open .vto-group-body { display: block; }
+.vto-group-body table { width: 100%; }
+.vto-group-body .vendida-tag {
+  display: inline-block; font-size: 10px; font-weight: 600;
+  padding: 2px 7px; border-radius: 100px;
+  background: var(--green-soft); color: #065F46;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+
 @media (max-width: 600px) {
   .wrap { padding: 16px 12px 40px; }
   .card .value { font-size: 18px; }
   thead th, tbody td { padding: 8px 10px; font-size: 12px; }
+  .vto-group-head .stats { gap: 10px; font-size: 12px; }
 }
 </style>
 </head>
@@ -252,6 +348,7 @@ tfoot td {
 
     <div class="tabs">
       <button class="tab active" data-tab="compras" onclick="setTab('compras')">Compras VW</button>
+      <button class="tab" data-tab="proxvtos" onclick="setTab('proxvtos')">Próx. Vencimientos</button>
       <button class="tab" data-tab="bancos" onclick="setTab('bancos')">Bancos</button>
       <button class="tab" data-tab="vwcredit" onclick="setTab('vwcredit')">VW Credit</button>
     </div>
@@ -264,6 +361,11 @@ tfoot td {
       </div>
 
       <div id="comprasContent"></div>
+    </section>
+
+    <!-- =================== PANEL PRÓX VTOS =================== -->
+    <section class="panel" id="panelProxvtos">
+      <div id="proxVtosContent"></div>
     </section>
 
     <!-- =================== PANEL BANCOS =================== -->
@@ -301,6 +403,13 @@ const APPS_SCRIPT_TOKEN = 'tga-saldos-K9Mx2P7vQ';
 // Estado in-memory
 let lastCompras = null;
 let filterStatus = 'impagas'; // 'impagas' | 'todas' | 'pagadas'
+let colSearch = '';
+let colModelo = '';
+let colColor = '';
+let colMes = '';
+let proxVtoFilter = 'all'; // 'all' | 'novendidas' | 'vendidas'
+let proxVtoSelected = new Set();
+let proxVtoOpen = new Set();
 
 // =======================================================================
 // SESIÓN (cookie SSO compartida)
@@ -337,9 +446,10 @@ function logout() {
 function setTab(tab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  const map = { compras: 'panelCompras', bancos: 'panelBancos', vwcredit: 'panelVwcredit' };
+  const map = { compras: 'panelCompras', proxvtos: 'panelProxvtos', bancos: 'panelBancos', vwcredit: 'panelVwcredit' };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
+  if (tab === 'proxvtos') renderProxVtos();
 }
 
 // =======================================================================
@@ -421,9 +531,34 @@ function renderCompras(data) {
     </div>
   `;
 
+  // Opciones únicas para los selects (sobre todas las unidades).
+  const opciones = (campo) => {
+    const set = new Set();
+    unidades.forEach(u => { const v = String(u[campo] || '').trim(); if (v) set.add(v); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  };
+  const buildSelect = (campo, label, sel) => {
+    const opts = opciones(campo).map(v =>
+      `<option value="${escapeHtml(v)}" ${v === sel ? 'selected' : ''}>${escapeHtml(v)}</option>`
+    ).join('');
+    return `<select onchange="setColFilter('${campo}', this.value)">
+      <option value="">${label} (todos)</option>${opts}
+    </select>`;
+  };
+
+  const colFiltros = `
+    <div class="col-filters">
+      <input type="search" placeholder="Buscar serie, preventa, modelo..." value="${escapeHtml(colSearch)}" oninput="setColSearch(this.value)">
+      ${buildSelect('modelo', 'Modelo', colModelo)}
+      ${buildSelect('color', 'Color', colColor)}
+      ${buildSelect('mes', 'Mes', colMes)}
+      ${(colSearch || colModelo || colColor || colMes) ? '<button class="clear-btn" onclick="clearColFilters()">✕ Limpiar</button>' : ''}
+    </div>
+  `;
+
   const tableHtml = renderTablaUnidades(unidades);
 
-  wrap.innerHTML = cards + filtros + tableHtml;
+  wrap.innerHTML = cards + filtros + colFiltros + tableHtml;
 
   // Updated at
   if (data.updatedAt) {
@@ -436,11 +571,71 @@ function setFilterStatus(s) {
   if (lastCompras) renderCompras(lastCompras);
 }
 
+// Filtros de columna (sólo re-renderiza la tabla para no perder foco del input)
+function setColSearch(v) {
+  colSearch = v || '';
+  rerenderTabla();
+}
+function setColFilter(campo, valor) {
+  if (campo === 'modelo') colModelo = valor || '';
+  else if (campo === 'color') colColor = valor || '';
+  else if (campo === 'mes') colMes = valor || '';
+  rerenderTabla();
+}
+function clearColFilters() {
+  colSearch = ''; colModelo = ''; colColor = ''; colMes = '';
+  if (lastCompras) renderCompras(lastCompras);
+}
+function rerenderTabla() {
+  if (!lastCompras) return;
+  const wrap = document.getElementById('comprasContent');
+  // Reemplaza sólo el .table-wrap dejando intactos los cards/filtros
+  const existing = wrap.querySelector('.table-wrap');
+  const empty = wrap.querySelector('.empty');
+  const nuevo = renderTablaUnidades(lastCompras.unidades || []);
+  const tmp = document.createElement('div');
+  tmp.innerHTML = nuevo;
+  const target = existing || empty;
+  if (target && tmp.firstElementChild) {
+    target.replaceWith(tmp.firstElementChild);
+  } else {
+    renderCompras(lastCompras);
+  }
+  // Mostrar/ocultar el botón limpiar
+  const wantClear = !!(colSearch || colModelo || colColor || colMes);
+  const cf = wrap.querySelector('.col-filters');
+  if (cf) {
+    let btn = cf.querySelector('.clear-btn');
+    if (wantClear && !btn) {
+      btn = document.createElement('button');
+      btn.className = 'clear-btn';
+      btn.textContent = '✕ Limpiar';
+      btn.onclick = clearColFilters;
+      cf.appendChild(btn);
+    } else if (!wantClear && btn) {
+      btn.remove();
+    }
+  }
+}
+
 function renderTablaUnidades(unidades) {
   let filas;
   if (filterStatus === 'impagas') filas = unidades.filter(u => u.impaga);
   else if (filterStatus === 'pagadas') filas = unidades.filter(u => !u.impaga && u.fechaPago);
   else filas = unidades.slice();
+
+  // Filtros por columna
+  if (colModelo) filas = filas.filter(u => String(u.modelo || '').trim() === colModelo);
+  if (colColor)  filas = filas.filter(u => String(u.color  || '').trim() === colColor);
+  if (colMes)    filas = filas.filter(u => String(u.mes    || '').trim() === colMes);
+  if (colSearch) {
+    const q = colSearch.trim().toLowerCase();
+    filas = filas.filter(u => {
+      const blob = [u.serie, u.preventa, u.modelo, u.color, u.mes, u.fc, u.fechaVta, u.vence, u.localidad]
+        .map(x => String(x || '').toLowerCase()).join(' ');
+      return blob.indexOf(q) > -1;
+    });
+  }
 
   // Ordenar por fecha de vencimiento (más próxima primero)
   filas.sort((a, b) => {
@@ -476,8 +671,8 @@ function renderTablaUnidades(unidades) {
         <td class="serie">${escapeHtml(u.serie || '')}</td>
         <td>${escapeHtml(u.modelo || '')}</td>
         <td>${escapeHtml(u.color || '')}</td>
-        <td>${escapeHtml(u.preventa || '')}</td>
-        <td>${escapeHtml(u.fechaVta || '')}</td>
+        <td>${escapeHtml(dash(u.preventa))}</td>
+        <td>${escapeHtml(dash(u.fechaVta))}</td>
         <td class="num importe">${fmtMoney(importeMostrar)}</td>
         <td>${escapeHtml(u.fechaPago || '—')}</td>
       </tr>
@@ -523,6 +718,205 @@ function renderTablaUnidades(unidades) {
 }
 
 // =======================================================================
+// PRÓXIMOS VENCIMIENTOS
+// =======================================================================
+function renderProxVtos() {
+  const wrap = document.getElementById('proxVtosContent');
+  if (!lastCompras) {
+    wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando datos...</div></div>';
+    if (!document.getElementById('btnRefresh').disabled) loadCompras().then(() => {
+      if (document.querySelector('.tab.active')?.dataset.tab === 'proxvtos') renderProxVtos();
+    });
+    return;
+  }
+  const unidades = Array.isArray(lastCompras.unidades) ? lastCompras.unidades : [];
+  // Sólo impagas (los vencimientos relevantes son los que aún se deben).
+  let impagas = unidades.filter(u => u.impaga);
+  // Filtro vendida/no vendida
+  if (proxVtoFilter === 'novendidas') impagas = impagas.filter(u => !esVendida(u));
+  else if (proxVtoFilter === 'vendidas') impagas = impagas.filter(u => esVendida(u));
+
+  // Agrupar por fecha de vencimiento
+  const grupos = new Map(); // key (yyyy-mm-dd o 'sin') → { date|null, key, items: [], total: 0 }
+  impagas.forEach(u => {
+    const d = parseFechaCorta(u.vence);
+    const key = d ? fmtDateKey(d) : 'sin';
+    if (!grupos.has(key)) grupos.set(key, { date: d, key, items: [], total: 0 });
+    const g = grupos.get(key);
+    g.items.push(u);
+    g.total += Number(u.importe) || 0;
+  });
+  const arr = Array.from(grupos.values()).sort((a, b) => {
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return a.date - b.date;
+  });
+
+  // Limpiar selecciones de grupos que ya no están visibles
+  const visibles = new Set(arr.map(g => g.key));
+  Array.from(proxVtoSelected).forEach(k => { if (!visibles.has(k)) proxVtoSelected.delete(k); });
+
+  // Total a mostrar: si hay seleccion, sólo seleccionados; si no, todos los visibles
+  const haySel = proxVtoSelected.size > 0;
+  const totalArr = haySel ? arr.filter(g => proxVtoSelected.has(g.key)) : arr;
+  const totalDeuda = totalArr.reduce((acc, g) => acc + g.total, 0);
+  const totalUnidades = totalArr.reduce((acc, g) => acc + g.items.length, 0);
+  const totalGrupos = totalArr.length;
+
+  const filtroLbl = proxVtoFilter === 'vendidas' ? 'vendidas' : (proxVtoFilter === 'novendidas' ? 'no vendidas' : 'todas');
+
+  if (!arr.length) {
+    wrap.innerHTML = `
+      ${renderProxVtosControls()}
+      <div class="empty"><div class="ico">✅</div><div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin vencimientos pendientes (${filtroLbl})</div></div>
+    `;
+    return;
+  }
+
+  const totalBar = `
+    <div class="vtos-totalbar">
+      <div>
+        <div class="lbl">${haySel ? 'Deuda seleccionada' : 'Deuda total visible'}</div>
+        <div class="val">${fmtMoney(totalDeuda)}</div>
+        <div class="sub">${totalUnidades} unidad${totalUnidades === 1 ? '' : 'es'} · ${totalGrupos} grupo${totalGrupos === 1 ? '' : 's'} de fecha · filtro: ${filtroLbl}</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        ${haySel ? '<button onclick="clearProxVtoSelection()">Limpiar selección</button>' : '<button onclick="selectAllProxVtos()">Seleccionar todos</button>'}
+      </div>
+    </div>
+  `;
+
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const groupsHtml = arr.map(g => renderProxVtoGroup(g, hoy)).join('');
+
+  wrap.innerHTML = renderProxVtosControls() + totalBar + groupsHtml;
+}
+
+function renderProxVtosControls() {
+  return `
+    <div class="vtos-controls">
+      <div class="group">
+        <span style="font-size:13px; color:var(--vw-grey-4); font-weight:600">Filtrar:</span>
+        <button class="filter-btn ${proxVtoFilter === 'all' ? 'active' : ''}" onclick="setProxVtoFilter('all')">Todas</button>
+        <button class="filter-btn ${proxVtoFilter === 'novendidas' ? 'active' : ''}" onclick="setProxVtoFilter('novendidas')">Solo no vendidas</button>
+        <button class="filter-btn ${proxVtoFilter === 'vendidas' ? 'active' : ''}" onclick="setProxVtoFilter('vendidas')">Solo vendidas</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderProxVtoGroup(g, hoy) {
+  const sel = proxVtoSelected.has(g.key);
+  const open = proxVtoOpen.has(g.key);
+  let rel = '', relClass = '';
+  let label = g.date ? fmtFechaLarga(g.date) : 'Sin fecha de vencimiento';
+  if (g.date) {
+    const diff = Math.round((g.date - hoy) / 86400000);
+    if (diff < 0) { rel = `Vencida hace ${Math.abs(diff)} d`; relClass = 'urgente'; }
+    else if (diff === 0) { rel = 'Hoy'; relClass = 'urgente'; }
+    else if (diff === 1) { rel = 'Mañana'; relClass = 'pronto'; }
+    else if (diff <= 7) { rel = `En ${diff} d`; relClass = 'pronto'; }
+    else { rel = `En ${diff} d`; }
+  }
+  const filas = g.items.slice().sort((a, b) => {
+    const sa = String(a.serie || '').localeCompare(String(b.serie || ''));
+    return sa;
+  }).map(u => `
+    <tr>
+      <td class="serie">${escapeHtml(u.serie || '')}</td>
+      <td>${escapeHtml(u.modelo || '')}</td>
+      <td>${escapeHtml(u.color || '')}</td>
+      <td>${escapeHtml(dash(u.preventa))}</td>
+      <td>${escapeHtml(dash(u.fechaVta))}</td>
+      <td>${esVendida(u) ? '<span class="vendida-tag">Vendida</span>' : '<span style="font-size:11px;color:var(--vw-grey-3)">Sin venta</span>'}</td>
+      <td class="num importe">${fmtMoney(u.importe)}</td>
+    </tr>
+  `).join('');
+  return `
+    <div class="vto-group ${sel ? 'selected' : ''} ${relClass === 'urgente' ? 'vencida' : ''} ${open ? 'open' : ''}" data-key="${escapeHtml(g.key)}">
+      <div class="vto-group-head" onclick="toggleProxVtoOpen(event, '${escapeHtml(g.key)}')">
+        <input type="checkbox" ${sel ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleProxVtoSelect('${escapeHtml(g.key)}')">
+        <div class="date-label">
+          <span>${escapeHtml(label)}</span>
+          ${rel ? `<span class="date-rel ${relClass}">${escapeHtml(rel)}</span>` : ''}
+        </div>
+        <div class="stats">
+          <span class="cnt">${g.items.length} u.</span>
+          <span class="amt">${fmtMoney(g.total)}</span>
+          <span class="toggle">${open ? '▲' : '▼'}</span>
+        </div>
+      </div>
+      <div class="vto-group-body">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Serie</th>
+                <th>Modelo</th>
+                <th>Color</th>
+                <th>Preventa</th>
+                <th>Fecha venta</th>
+                <th>Estado venta</th>
+                <th class="num">Importe</th>
+              </tr>
+            </thead>
+            <tbody>${filas}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function setProxVtoFilter(f) {
+  proxVtoFilter = f;
+  proxVtoSelected.clear();
+  renderProxVtos();
+}
+function toggleProxVtoSelect(key) {
+  if (proxVtoSelected.has(key)) proxVtoSelected.delete(key);
+  else proxVtoSelected.add(key);
+  renderProxVtos();
+}
+function toggleProxVtoOpen(ev, key) {
+  if (ev && ev.target && (ev.target.tagName === 'INPUT')) return;
+  if (proxVtoOpen.has(key)) proxVtoOpen.delete(key);
+  else proxVtoOpen.add(key);
+  renderProxVtos();
+}
+function clearProxVtoSelection() {
+  proxVtoSelected.clear();
+  renderProxVtos();
+}
+function selectAllProxVtos() {
+  const unidades = (lastCompras && lastCompras.unidades) || [];
+  let impagas = unidades.filter(u => u.impaga);
+  if (proxVtoFilter === 'novendidas') impagas = impagas.filter(u => !esVendida(u));
+  else if (proxVtoFilter === 'vendidas') impagas = impagas.filter(u => esVendida(u));
+  impagas.forEach(u => {
+    const d = parseFechaCorta(u.vence);
+    proxVtoSelected.add(d ? fmtDateKey(d) : 'sin');
+  });
+  renderProxVtos();
+}
+
+function fmtDateKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+function fmtFechaLarga(d) {
+  // "Jue 14/05/26"
+  const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dias[d.getDay()]} ${dd}/${mm}/${yy}`;
+}
+
+// =======================================================================
 // HELPERS
 // =======================================================================
 function fmtMoney(n) {
@@ -532,6 +926,20 @@ function fmtMoney(n) {
 
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// "-" para valores vacíos / N/A / #N/A. Sino devuelve el valor tal cual.
+function dash(s) {
+  const v = String(s == null ? '' : s).trim();
+  if (!v) return '-';
+  const low = v.toLowerCase();
+  if (low === 'n/a' || low === '#n/a' || low === '#n/a!' || low === '-') return '-';
+  return v;
+}
+
+function esVendida(u) {
+  // "Vendida" = tiene preventa o fecha de venta cargada (no vacío ni N/A)
+  return dash(u.preventa) !== '-' || dash(u.fechaVta) !== '-';
 }
 
 // Acepta "yyyy-mm-dd" (ISO) o "26-mar" o "26/03/2026"
