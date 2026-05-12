@@ -566,9 +566,9 @@ function renderCompras(data) {
     </div>
   `;
 
-  // Select de fecha de vencimiento (sólo fechas que aparecen en los datos)
+  // Select de fecha de vencimiento (sólo fechas de impagas — las únicas con vencimiento relevante)
   const vencesSet = new Map(); // key → {label, date}
-  unidades.forEach(u => {
+  unidades.filter(u => u.impaga).forEach(u => {
     const d = parseFechaCorta(u.vence);
     const key = d ? fmtDateKey(d) : (u.vence ? '' : 'sin');
     if (!key) return;
