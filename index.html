@@ -322,6 +322,28 @@ td.num.neg, td.importe.neg { color: var(--red); }
 }
 .fondos-acumulado .sub { font-size: 12px; color: var(--vw-grey-4); margin-top: 4px; }
 
+.fondos-historial { padding: 0; }
+.fondos-historial:empty { display: none; }
+.fondos-historial .hist-head {
+  padding: 14px 22px 8px; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  font-weight: 700; color: var(--vw-grey-4);
+  border-top: 1px solid var(--vw-grey-2);
+  background: var(--vw-grey-1);
+}
+.fondos-historial .hist-list { list-style: none; padding: 0; margin: 0; }
+.fondos-historial .hist-list li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline; gap: 12px;
+  padding: 10px 22px;
+  border-top: 1px solid var(--vw-grey-2);
+  font-size: 13px;
+}
+.fondos-historial .hist-mes { font-weight: 600; color: var(--vw-blue); text-transform: capitalize; }
+.fondos-historial .hist-info { font-size: 12px; color: var(--vw-grey-4); }
+.fondos-historial .hist-val { font-weight: 700; color: var(--vw-blue); font-variant-numeric: tabular-nums; }
+
 .venc-chip {
   display: inline-block; margin-left: 8px;
   font-size: 10px; font-weight: 600;
@@ -1333,13 +1355,14 @@ function renderSeccionFondos(fondos) {
     <td class="num">—</td>
   </tr>`;
 
-  // Placeholder de acumulado del mes — se reemplaza con el valor real cuando vuelve la consulta a Supabase
+  // Placeholder de acumulado del mes + historial — se reemplazan cuando vuelve Supabase
   const acumuladoSlot = `
     <div class="fondos-acumulado" id="fondosAcumulado">
       <div class="lbl">Acumulado del mes</div>
       <div class="val" id="fondosAcumuladoVal">cargando...</div>
       <div class="sub" id="fondosAcumuladoSub">Se actualiza con la ganancia día a día</div>
     </div>
+    <div class="fondos-historial" id="fondosHistorial"></div>
   `;
 
   return `
@@ -1417,6 +1440,33 @@ async function fetchAcumuladoMes() {
   return { acumulado, dias: (data || []).length, registros: data || [] };
 }
 
+// Trae todos los registros, agrupa por año-mes, devuelve los meses anteriores al actual.
+async function fetchHistorialMeses() {
+  const data = await sbFetch('saldos_fondos_diario?select=fecha,ganancia_dia&order=fecha.asc') || [];
+  const hoy = new Date();
+  const yMesActual = hoy.getFullYear() * 100 + (hoy.getMonth() + 1);
+  const porMes = new Map(); // key "YYYY-MM" → { total, dias, ymKey }
+  data.forEach(r => {
+    if (!r.fecha) return;
+    const ym = String(r.fecha).slice(0, 7);              // "2026-05"
+    const y = Number(ym.split('-')[0]);
+    const m = Number(ym.split('-')[1]);
+    const ymKey = y * 100 + m;
+    if (ymKey >= yMesActual) return;                     // sólo meses anteriores
+    if (!porMes.has(ym)) porMes.set(ym, { total: 0, dias: 0, y, m });
+    const g = porMes.get(ym);
+    g.total += Number(r.ganancia_dia) || 0;
+    g.dias += 1;
+  });
+  // Ordenar de más reciente a más antiguo
+  return Array.from(porMes.values()).sort((a, b) => (b.y * 100 + b.m) - (a.y * 100 + a.m));
+}
+
+function _mesNombre(y, m) {
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return meses[m - 1] + ' ' + y;
+}
+
 async function sincronizarAcumuladoFondos() {
   const fondos = (lastInforme && lastInforme.fondos) || [];
   if (!fondos.length) return;
@@ -1430,6 +1480,26 @@ async function sincronizarAcumuladoFondos() {
     if (subEl) {
       const mesNombre = new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
       subEl.textContent = dias + ' día' + (dias === 1 ? '' : 's') + ' registrado' + (dias === 1 ? '' : 's') + ' en ' + mesNombre;
+    }
+    // Historial de meses anteriores
+    const meses = await fetchHistorialMeses();
+    const hist = document.getElementById('fondosHistorial');
+    if (hist) {
+      if (!meses.length) {
+        hist.innerHTML = '';
+      } else {
+        const lis = meses.map(m => `
+          <li>
+            <span class="hist-mes">${escapeHtml(_mesNombre(m.y, m.m))}</span>
+            <span class="hist-info">${m.dias} día${m.dias === 1 ? '' : 's'}</span>
+            <span class="hist-val">${fmtMoney(m.total)}</span>
+          </li>
+        `).join('');
+        hist.innerHTML = `
+          <div class="hist-head">Meses anteriores</div>
+          <ul class="hist-list">${lis}</ul>
+        `;
+      }
     }
   } catch (e) {
     console.error('Error acumulado fondos:', e);
