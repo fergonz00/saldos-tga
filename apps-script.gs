@@ -163,42 +163,48 @@ function getInforme() {
   let lastWasSep = true;
   const RE_FECHA = /^\d{1,2}\/\d{1,2}\/\d{2,4}$/;
 
-  for (let i = 2; i < display.length; i++) {
+  // i=1 → fila 2 (donde empieza "DISPONIBILIDADES $" como header)
+  for (let i = 1; i < display.length; i++) {
     const concepto = String(display[i][1] || '').trim();   // B
     const dStr     = String(display[i][2] || '').trim();   // C
     const eStr     = String(display[i][3] || '').trim();   // D
     const dNum     = toNumber(raw[i][2]);
     const eNum     = toNumber(raw[i][3]);
-    const lower    = concepto.toLowerCase();
 
-    // Capturar el disponible VW desde:
-    //   - "TOTAL DISP" (la fila que tiene el monto)
-    //   - "SALDOS DISPONIBLES VW" (header con valor)
+    // Stop a "rendimiento" si aparece en cualquier columna leída
+    const blob = (concepto + ' ' + dStr + ' ' + eStr).toLowerCase();
+    if (blob.indexOf('rendimiento') >= 0) break;
+
+    // Capturar disponible VW
     if (!disponibleVW && /total\s+disp\b/i.test(concepto)) disponibleVW = dNum || eNum;
     if (!disponibleVW && /saldos\s+disponibles\s+vw/i.test(concepto)) disponibleVW = dNum || eNum;
 
-    // Cortar al entrar en la sección "rendimiento diario de fondos"
-    if (lower.indexOf('rendimiento') >= 0) break;
-
-    // Fila vacía → separador
+    // Fila totalmente vacía → separador
     if (!concepto && !dStr && !eStr) {
       if (!lastWasSep) { rows.push({ tipo: 'sep' }); lastWasSep = true; }
       continue;
     }
+
+    // Fila con concepto vacío pero con valor:
+    //   En la planilla, los TOTALES de DISP FUTURAS y similares ponen el
+    //   valor "Técnico" en una fila aparte. Lo mergeo al row anterior si era
+    //   un total al que le falta valor E.
+    if (!concepto && (dStr || eStr)) {
+      if (rows.length) {
+        const prev = rows[rows.length - 1];
+        if (prev.tipo === 'total' && prev.e === 0 && eNum) {
+          prev.e    = eNum;
+          prev.eStr = eStr;
+        }
+      }
+      continue;
+    }
     lastWasSep = false;
 
-    // Detectar tipo
-    const letras = concepto.replace(/[^a-záéíóúñü]/gi, '');
-    const esTodoMayus = letras.length >= 3 && letras === letras.toUpperCase();
-    const empiezaTotal = /^(total|subtotal)\b/i.test(concepto);
-    const tieneValorD  = dNum !== 0;
-    const tieneValorE  = eNum !== 0;
-    const tieneValor   = tieneValorD || tieneValorE;
-
+    // Clasificar: whitelist de headers de sección (solo los nombres conocidos)
     let tipo = 'row';
-    if (esTodoMayus && !empiezaTotal) tipo = 'header';
-    else if (empiezaTotal || /^total\b/i.test(concepto)) tipo = 'total';
-    // SALDOS DISPONIBLES VW y DEUDAS EN FABRICA son headers (todo mayúsculas) — ya cubierto.
+    if (_esHeaderSeccion(concepto))                  tipo = 'header';
+    else if (/^(total|subtotal)\b/i.test(concepto))  tipo = 'total';
 
     rows.push({
       tipo:     tipo,
@@ -235,6 +241,17 @@ function getInforme() {
     personal:     personal,
     updatedAt:    new Date().toISOString(),
   };
+}
+
+// Headers de sección en Bancos. Sólo los nombres conocidos califican —
+// así "AFIP - SALDO IVA" no se confunde con header sólo por estar en mayúsculas.
+function _esHeaderSeccion(concepto) {
+  const u = concepto.trim().toUpperCase();
+  return /^DISPONIBILIDADES/.test(u) ||
+         /^DISP\s+FUTURAS/.test(u) ||
+         /^DETALLE\s+DE\s+CHEQDIF/.test(u) ||
+         /^SALDOS\s+DISPONIBLES\s+VW/.test(u) ||
+         /^DEUDAS\s+EN\s+FABRICA/.test(u);
 }
 
 function _clasificarFilaPersonal(texto, fecha) {
