@@ -126,10 +126,70 @@ function getCompras() {
 }
 
 // =======================================================================
-// INFORME — pendiente (Bancos + VW Credit)
+// INFORME — Bancos / disponibilidades / Personal
 // =======================================================================
+// Lee la hoja "INFORME" y devuelve:
+//   - saldos: [{ concepto, valor, valorMostrar }]   (col C/D desde fila 3
+//             hasta detectar la sección "rendimiento")
+//   - disponibleVW: número en D47 (disponible para aplicar en VW)
+//   - personal: [{ texto }]                          (col E desde fila 3
+//             hasta detectar la sección "factura")
 function getInforme() {
-  return { pendiente: true };
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(SHEET_INFORME);
+  if (!sh) throw new Error('No existe la hoja "' + SHEET_INFORME + '"');
+
+  const lastRow = Math.max(sh.getLastRow(), 80);
+  const lastCol = Math.max(sh.getLastColumn(), 6);
+  if (lastRow < 3) {
+    return { saldos: [], disponibleVW: 0, personal: [], updatedAt: new Date().toISOString() };
+  }
+
+  const display = sh.getRange(1, 1, lastRow, lastCol).getDisplayValues();
+  const raw     = sh.getRange(1, 1, lastRow, lastCol).getValues();
+
+  // SALDOS / DISPONIBILIDADES (col C/D desde fila 3)
+  const saldos = [];
+  let disponibleVW = 0;
+  let lastWasSep = true; // evitar separadores duplicados al inicio
+  for (let i = 2; i < display.length; i++) {            // i=2 → fila 3
+    const concepto = String(display[i][2] || '').trim(); // col C
+    const valorStr = String(display[i][3] || '').trim(); // col D
+    const valorNum = toNumber(raw[i][3]);
+    const lower    = concepto.toLowerCase();
+
+    // Captura especial: D47 = disponible VW (i=46 → fila 47)
+    if (i === 46) disponibleVW = valorNum;
+
+    // Cortar cuando entramos en "rendimiento diario de fondos"
+    if (lower.indexOf('rendimiento') >= 0) break;
+
+    // Fila completamente vacía → separador (para agrupar visualmente)
+    if (!concepto && !valorStr) {
+      if (!lastWasSep) { saldos.push({ separator: true }); lastWasSep = true; }
+      continue;
+    }
+    lastWasSep = false;
+    saldos.push({ concepto, valor: valorNum, valorMostrar: valorStr });
+  }
+  // Limpiar separador final
+  while (saldos.length && saldos[saldos.length - 1].separator) saldos.pop();
+
+  // PERSONAL (col E desde fila 3, hasta detectar "factura")
+  const personal = [];
+  for (let i = 2; i < display.length; i++) {
+    const txt = String(display[i][4] || '').trim();    // col E
+    if (!txt) continue;
+    if (txt.toLowerCase().indexOf('factura') >= 0) break;
+    personal.push({ texto: txt });
+  }
+
+  return {
+    saldos:       saldos,
+    disponibleVW: disponibleVW,
+    personal:     personal,
+    updatedAt:    new Date().toISOString(),
+  };
 }
 
 // =======================================================================

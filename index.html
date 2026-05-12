@@ -275,6 +275,41 @@ tbody tr.row-selected { background: rgba(0,30,80,0.06); }
 tbody tr.row-selected:hover { background: rgba(0,30,80,0.10); }
 .row-check { width: 16px; height: 16px; cursor: pointer; accent-color: var(--vw-blue); }
 
+tbody tr.sep-row { background: transparent; border: none; }
+tbody tr.sep-row td { padding: 4px 0; border: none; }
+tbody tr.sep-row + tr td { border-top: none; }
+tbody tr.header-row td {
+  background: var(--vw-grey-1); color: var(--vw-blue);
+  font-weight: 700; font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 8px 12px;
+}
+
+.personal-wrap {
+  background: white; border-radius: var(--radius);
+  box-shadow: var(--shadow); overflow: hidden;
+}
+.personal-head {
+  padding: 14px 18px; border-bottom: 1px solid var(--vw-grey-2);
+}
+.personal-head h3 { font-size: 14px; font-weight: 600; color: var(--vw-blue); }
+.personal-body { padding: 8px 0; }
+.personal-header {
+  padding: 12px 18px 6px;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--vw-grey-4);
+  border-top: 1px solid var(--vw-grey-2);
+  background: var(--vw-grey-1);
+}
+.personal-header:first-child { border-top: none; }
+.personal-item {
+  padding: 9px 18px; font-size: 13px;
+  border-bottom: 1px solid var(--vw-grey-2);
+  color: var(--vw-black);
+}
+.personal-item:last-child { border-bottom: none; }
+
 .vtos-controls {
   display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
   align-items: center; justify-content: space-between;
@@ -386,6 +421,7 @@ tbody tr.row-selected:hover { background: rgba(0,30,80,0.10); }
       <button class="tab active" data-tab="compras" onclick="setTab('compras')">Compras VW</button>
       <button class="tab" data-tab="proxvtos" onclick="setTab('proxvtos')">Próx. Vencimientos</button>
       <button class="tab" data-tab="bancos" onclick="setTab('bancos')">Bancos</button>
+      <button class="tab" data-tab="personal" onclick="setTab('personal')">Personal</button>
       <button class="tab" data-tab="vwcredit" onclick="setTab('vwcredit')">VW Credit</button>
     </div>
 
@@ -406,11 +442,16 @@ tbody tr.row-selected:hover { background: rgba(0,30,80,0.10); }
 
     <!-- =================== PANEL BANCOS =================== -->
     <section class="panel" id="panelBancos">
-      <div class="empty">
-        <div class="ico">🏦</div>
-        <div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Saldos de bancos</div>
-        <div style="font-size:13px; margin-top:6px">Próximo paso. Definimos qué bloques del INFORME mostramos.</div>
+      <div class="toolbar">
+        <div class="updated" id="updatedAtInforme">—</div>
+        <button class="refresh" id="btnRefreshInforme" onclick="loadInforme(true)">Actualizar</button>
       </div>
+      <div id="bancosContent"></div>
+    </section>
+
+    <!-- =================== PANEL PERSONAL =================== -->
+    <section class="panel" id="panelPersonal">
+      <div id="personalContent"></div>
     </section>
 
     <!-- =================== PANEL VW CREDIT =================== -->
@@ -438,6 +479,7 @@ const APPS_SCRIPT_TOKEN = 'tga-saldos-K9Mx2P7vQ';
 
 // Estado in-memory
 let lastCompras = null;
+let lastInforme = null;
 let filterStatus = 'impagas'; // 'impagas' | 'todas' | 'pagadas'
 let colSearch = '';
 let colVence = ''; // string ISO yyyy-mm-dd o 'sin'
@@ -481,10 +523,62 @@ function logout() {
 function setTab(tab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  const map = { compras: 'panelCompras', proxvtos: 'panelProxvtos', bancos: 'panelBancos', vwcredit: 'panelVwcredit' };
+  const map = {
+    compras:  'panelCompras',
+    proxvtos: 'panelProxvtos',
+    bancos:   'panelBancos',
+    personal: 'panelPersonal',
+    vwcredit: 'panelVwcredit',
+  };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
   if (tab === 'proxvtos') renderProxVtos();
+  if (tab === 'bancos')   ensureInforme(renderBancos);
+  if (tab === 'personal') ensureInforme(renderPersonal);
+}
+
+// =======================================================================
+// INFORME · fetch (lazy, una vez)
+// =======================================================================
+async function loadInforme(forzar) {
+  const btn = document.getElementById('btnRefreshInforme');
+  if (btn) { btn.disabled = true; btn.textContent = 'Cargando...'; }
+  try {
+    const url = APPS_SCRIPT_URL + '?token=' + encodeURIComponent(APPS_SCRIPT_TOKEN) + '&tipo=informe';
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data && data.error) throw new Error(data.error);
+    lastInforme = data;
+    const upd = document.getElementById('updatedAtInforme');
+    if (upd && data.updatedAt) upd.textContent = 'Actualizado: ' + new Date(data.updatedAt).toLocaleString('es-AR');
+    // re-renderizar la solapa activa si aplica
+    const active = document.querySelector('.tab.active')?.dataset.tab;
+    if (active === 'bancos')   renderBancos();
+    if (active === 'personal') renderPersonal();
+    return data;
+  } catch (e) {
+    console.error(e);
+    const msg = `<div class="errbox"><div class="ico">⚠️</div>
+      <div class="ttl">No se pudo cargar el INFORME</div>
+      <div class="det">${escapeHtml(e.message || String(e))}</div></div>`;
+    const wrap = document.getElementById('bancosContent');
+    if (wrap) wrap.innerHTML = msg;
+    const wrap2 = document.getElementById('personalContent');
+    if (wrap2) wrap2.innerHTML = msg;
+    throw e;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Actualizar'; }
+  }
+}
+
+function ensureInforme(cb) {
+  if (lastInforme) { cb(); return; }
+  const wrap = document.getElementById('bancosContent');
+  if (wrap) wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando INFORME...</div></div>';
+  const wrap2 = document.getElementById('personalContent');
+  if (wrap2) wrap2.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando INFORME...</div></div>';
+  loadInforme().then(() => cb()).catch(() => {});
 }
 
 // =======================================================================
@@ -1067,6 +1161,115 @@ function selectAllProxVtos() {
     proxVtoSelected.add(d ? fmtDateKey(d) : 'sin');
   });
   renderProxVtos();
+}
+
+// =======================================================================
+// BANCOS · render
+// =======================================================================
+function renderBancos() {
+  const wrap = document.getElementById('bancosContent');
+  if (!wrap) return;
+  const data = lastInforme;
+  if (!data) {
+    wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando INFORME...</div></div>';
+    return;
+  }
+  const saldos = Array.isArray(data.saldos) ? data.saldos : [];
+  const dispVW = Number(data.disponibleVW) || 0;
+
+  if (!saldos.length && !dispVW) {
+    wrap.innerHTML = '<div class="empty"><div class="ico">🏦</div><div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin datos en la hoja INFORME</div></div>';
+    return;
+  }
+
+  // Sumatorias: total general (todos los valores numéricos)
+  const total = saldos.reduce((acc, r) => acc + (r && !r.separator ? (Number(r.valor) || 0) : 0), 0);
+
+  const filasHtml = saldos.map(r => {
+    if (r.separator) return '<tr class="sep-row"><td colspan="2"></td></tr>';
+    const concepto = String(r.concepto || '').trim();
+    const valorNum = Number(r.valor) || 0;
+    const tieneValor = valorNum !== 0 || (String(r.valorMostrar || '').trim().length > 0 && String(r.valorMostrar).indexOf('-') !== 0);
+    const esHeader = !tieneValor && concepto.length > 0;
+    if (esHeader) {
+      return `<tr class="header-row"><td colspan="2">${escapeHtml(concepto)}</td></tr>`;
+    }
+    const valStr = valorNum !== 0 ? fmtMoney(valorNum) : escapeHtml(r.valorMostrar || '');
+    return `<tr>
+      <td>${escapeHtml(concepto)}</td>
+      <td class="num importe">${valStr}</td>
+    </tr>`;
+  }).join('');
+
+  const cardDispVW = `
+    <div class="cards" style="grid-template-columns: 1fr;">
+      <div class="card good" style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);">
+        <div class="label">Disponible para aplicar en VW</div>
+        <div class="value">${fmtMoney(dispVW)}</div>
+        <div class="sub">INFORME · fila 47 col D</div>
+      </div>
+    </div>
+  `;
+
+  wrap.innerHTML = `
+    ${cardDispVW}
+    <div class="table-wrap">
+      <div class="table-head">
+        <h3>Bancos y disponibilidades</h3>
+        <span class="count">${saldos.filter(r => !r.separator).length} concepto${saldos.length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Concepto</th><th class="num">Valor</th></tr>
+          </thead>
+          <tbody>${filasHtml}</tbody>
+          <tfoot>
+            <tr>
+              <td style="text-align:right">Total</td>
+              <td class="num">${fmtMoney(total)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// =======================================================================
+// PERSONAL · render
+// =======================================================================
+function renderPersonal() {
+  const wrap = document.getElementById('personalContent');
+  if (!wrap) return;
+  const data = lastInforme;
+  if (!data) {
+    wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando INFORME...</div></div>';
+    return;
+  }
+  const items = Array.isArray(data.personal) ? data.personal : [];
+  if (!items.length) {
+    wrap.innerHTML = '<div class="empty"><div class="ico">👥</div><div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin novedades del personal</div></div>';
+    return;
+  }
+  const filas = items.map(r => {
+    const txt = String(r.texto || '').trim();
+    // Heurística: si parece header (todo en mayúsculas y sin números) lo destaco
+    const upper = txt === txt.toUpperCase();
+    const tieneNumeros = /\d/.test(txt);
+    const esHeader = upper && !tieneNumeros && txt.length < 50;
+    if (esHeader) return `<div class="personal-header">${escapeHtml(txt)}</div>`;
+    return `<div class="personal-item">${escapeHtml(txt)}</div>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="personal-wrap">
+      <div class="personal-head">
+        <h3>Novedades del personal</h3>
+      </div>
+      <div class="personal-body">${filas}</div>
+    </div>
+  `;
 }
 
 function fmtDateKey(d) {
