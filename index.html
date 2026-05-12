@@ -493,14 +493,13 @@ td.num.neg, td.importe.neg { color: var(--red); }
 
   <main class="wrap">
     <h2>Resumen financiero</h2>
-    <p class="lead">Seguimiento de unidades VW por estado de pago, saldos de bancos y línea VW Credit.</p>
+    <p class="lead">Seguimiento de unidades VW por estado de pago, saldos de bancos, fondos y personal.</p>
 
     <div class="tabs">
       <button class="tab active" data-tab="compras" onclick="setTab('compras')">Compras VW</button>
       <button class="tab" data-tab="proxvtos" onclick="setTab('proxvtos')">Próx. Vencimientos</button>
       <button class="tab" data-tab="bancos" onclick="setTab('bancos')">Bancos</button>
       <button class="tab" data-tab="personal" onclick="setTab('personal')">Personal</button>
-      <button class="tab" data-tab="vwcredit" onclick="setTab('vwcredit')">VW Credit</button>
     </div>
 
     <!-- =================== PANEL COMPRAS =================== -->
@@ -532,14 +531,6 @@ td.num.neg, td.importe.neg { color: var(--red); }
       <div id="personalContent"></div>
     </section>
 
-    <!-- =================== PANEL VW CREDIT =================== -->
-    <section class="panel" id="panelVwcredit">
-      <div class="empty">
-        <div class="ico">💳</div>
-        <div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Saldo VW Credit</div>
-        <div style="font-size:13px; margin-top:6px">Próximo paso. Definimos detalles a mostrar (vencimientos VWFS, deudas en fábrica, etc).</div>
-      </div>
-    </section>
   </main>
 </div>
 
@@ -610,7 +601,6 @@ function setTab(tab) {
     proxvtos: 'panelProxvtos',
     bancos:   'panelBancos',
     personal: 'panelPersonal',
-    vwcredit: 'panelVwcredit',
   };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
