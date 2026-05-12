@@ -308,6 +308,20 @@ td.num.neg, td.importe.neg { color: var(--red); }
 .bank-section table tbody td:last-child  { padding-right: 18px; }
 .bank-section thead th { padding-left: 18px; padding-right: 18px; }
 
+.fondos-acumulado {
+  padding: 18px 22px; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-top: 1px solid var(--vw-grey-2);
+}
+.fondos-acumulado .lbl {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+  font-weight: 700; color: #065F46; margin-bottom: 4px;
+}
+.fondos-acumulado .val {
+  font-size: 26px; font-weight: 700; color: #065F46;
+  letter-spacing: -0.5px; line-height: 1.1;
+}
+.fondos-acumulado .sub { font-size: 12px; color: var(--vw-grey-4); margin-top: 4px; }
+
 .venc-chip {
   display: inline-block; margin-left: 8px;
   font-size: 10px; font-weight: 600;
@@ -518,6 +532,10 @@ const USUARIOS_PERMITIDOS = ['fngonzalez'];
 // URL del Web App publicado en la planilla espejo.
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyRTqqpQMjKDL82Z5Cjd9IJWPQnINF0LAEvji8FizfXMBO8Cz0IVbTSnQnNmH_rRxz9yg/exec';
 const APPS_SCRIPT_TOKEN = 'tga-saldos-K9Mx2P7vQ';
+
+// Supabase — para acumulado diario de fondos (mismo proyecto que el portal/tasador)
+const SUPABASE_URL = 'https://wjfglsafgaltusmbnccl.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqZmdsc2FmZ2FsdHVzbWJuY2NsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MzM2OTksImV4cCI6MjA4OTAwOTY5OX0.OOwgyKDNQsbBaGDaL0OhJfc8eOsCClvvAPW0VFBKrOA';
 
 // Estado in-memory
 let lastCompras = null;
@@ -1263,9 +1281,11 @@ function renderBancos() {
   const fondosHtml = renderSeccionFondos(data.fondos || []);
 
   wrap.innerHTML = dispCard + seccionesHtml + fondosHtml;
+  // Acumulado mensual: guarda hoy en Supabase y refresca el total
+  sincronizarAcumuladoFondos();
 }
 
-// Limpia cualquier resto de fórmula rota de Sheets (#VALUE!, #¡DIV/0!, #N/A, etc.) → "-"
+// Limpia cualquier resto de fórmula rota de Sheets (#VALUE!, #¡DIV/0!, #N/A, etc.) → "—"
 function limpioStr(s) {
   const v = String(s == null ? '' : s).trim();
   if (!v) return '—';
@@ -1273,19 +1293,26 @@ function limpioStr(s) {
   return v;
 }
 
+// Calcula sumas de Total fondo y Ganancia día ignorando errores/NaN.
+function calcSumasFondos(fondos) {
+  // La fila "0" es el subtotal roto de la planilla → la salteo del cálculo
+  const reales = fondos.filter(f => String(f.fecha || '').trim() !== '0');
+  let sumaTotal = 0, sumaGanancia = 0;
+  reales.forEach(f => {
+    const t = Number(f.total);
+    const g = Number(f.ganancia);
+    if (!isNaN(t) && isFinite(t)) sumaTotal += t;
+    if (!isNaN(g) && isFinite(g)) sumaGanancia += g;
+  });
+  return { sumaTotal, sumaGanancia, filasReales: reales };
+}
+
 function renderSeccionFondos(fondos) {
   if (!fondos.length) return '';
-  // La planilla a veces incluye una fila de totales con fecha "0" — la separo del cálculo
-  // porque ya viene calculada (y con #VALUE). Suma propia abajo.
-  const filasReales = fondos.filter(f => String(f.fecha || '').trim() !== '0');
-  let sumaGanancia = 0;
-  filasReales.forEach(f => {
-    const v = Number(f.ganancia);
-    if (!isNaN(v) && isFinite(v)) sumaGanancia += v;
-  });
+  const { sumaTotal, sumaGanancia, filasReales } = calcSumasFondos(fondos);
 
   const filas = filasReales.map(f => {
-    const totalShow    = f.total !== 0 ? fmtMoney(f.total)    : limpioStr(f.totalStr);
+    const totalShow    = (f.total && !isNaN(f.total))       ? fmtMoney(f.total)    : limpioStr(f.totalStr);
     const gananciaShow = (f.ganancia && !isNaN(f.ganancia)) ? fmtMoney(f.ganancia) : limpioStr(f.gananciaStr);
     return `<tr>
       <td>${escapeHtml(f.fecha || '—')}</td>
@@ -1299,12 +1326,21 @@ function renderSeccionFondos(fondos) {
 
   const filaTotal = `<tr class="total-row">
     <td>Total día</td>
-    <td class="num importe">—</td>
+    <td class="num importe">${fmtMoney(sumaTotal)}</td>
     <td class="num importe">${fmtMoney(sumaGanancia)}</td>
     <td class="num">—</td>
     <td class="num">—</td>
     <td class="num">—</td>
   </tr>`;
+
+  // Placeholder de acumulado del mes — se reemplaza con el valor real cuando vuelve la consulta a Supabase
+  const acumuladoSlot = `
+    <div class="fondos-acumulado" id="fondosAcumulado">
+      <div class="lbl">Acumulado del mes</div>
+      <div class="val" id="fondosAcumuladoVal">cargando...</div>
+      <div class="sub" id="fondosAcumuladoSub">Se actualiza con la ganancia día a día</div>
+    </div>
+  `;
 
   return `
     <div class="bank-section">
@@ -1324,8 +1360,84 @@ function renderSeccionFondos(fondos) {
           <tbody>${filas}${filaTotal}</tbody>
         </table>
       </div>
+      ${acumuladoSlot}
     </div>
   `;
+}
+
+// =======================================================================
+// SUPABASE · acumulado mensual de la ganancia de fondos
+// =======================================================================
+async function sbFetch(path, opts) {
+  opts = opts || {};
+  const url = SUPABASE_URL + '/rest/v1/' + path;
+  const headers = Object.assign({
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  }, opts.headers || {});
+  const res = await fetch(url, Object.assign({}, opts, { headers }));
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error('Supabase ' + res.status + ': ' + text);
+  }
+  // Algunas operaciones devuelven 204 sin contenido
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+function fechaHoyISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + dd;
+}
+
+async function upsertGananciaHoy(gananciaDia, totalFondos) {
+  const body = JSON.stringify([{
+    fecha: fechaHoyISO(),
+    ganancia_dia: Number(gananciaDia) || 0,
+    total_fondos: Number(totalFondos) || 0,
+  }]);
+  await sbFetch('saldos_fondos_diario?on_conflict=fecha', {
+    method: 'POST',
+    headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: body,
+  });
+}
+
+async function fetchAcumuladoMes() {
+  const hoy = new Date();
+  const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const inicioStr = inicio.toISOString().split('T')[0];
+  const data = await sbFetch('saldos_fondos_diario?fecha=gte.' + inicioStr + '&select=fecha,ganancia_dia&order=fecha.asc');
+  const acumulado = (data || []).reduce((acc, r) => acc + (Number(r.ganancia_dia) || 0), 0);
+  return { acumulado, dias: (data || []).length, registros: data || [] };
+}
+
+async function sincronizarAcumuladoFondos() {
+  const fondos = (lastInforme && lastInforme.fondos) || [];
+  if (!fondos.length) return;
+  const { sumaGanancia, sumaTotal } = calcSumasFondos(fondos);
+  try {
+    await upsertGananciaHoy(sumaGanancia, sumaTotal);
+    const { acumulado, dias } = await fetchAcumuladoMes();
+    const valEl = document.getElementById('fondosAcumuladoVal');
+    const subEl = document.getElementById('fondosAcumuladoSub');
+    if (valEl) valEl.textContent = fmtMoney(acumulado);
+    if (subEl) {
+      const mesNombre = new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+      subEl.textContent = dias + ' día' + (dias === 1 ? '' : 's') + ' registrado' + (dias === 1 ? '' : 's') + ' en ' + mesNombre;
+    }
+  } catch (e) {
+    console.error('Error acumulado fondos:', e);
+    const valEl = document.getElementById('fondosAcumuladoVal');
+    const subEl = document.getElementById('fondosAcumuladoSub');
+    if (valEl) valEl.textContent = '—';
+    if (subEl) subEl.textContent = 'Error: ' + (e.message || e);
+  }
 }
 
 function renderSeccionBanco(sec) {
