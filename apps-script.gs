@@ -218,6 +218,49 @@ function getInforme() {
   }
   while (rows.length && rows[rows.length - 1].tipo === 'sep') rows.pop();
 
+  // ===== FONDOS — Rendimiento diario =====
+  //   Col B (1): fecha del análisis (ej "11-may")
+  //   Col C (2): total acumulado en el fondo
+  //   Col D (3): ganancia del día ($)
+  //   Col E (4): % diario
+  //   Col F (5): % anual
+  //   Col G (6): % mensual
+  // Arranca al detectar "Rendimiento diario Fondos" en cualquier columna.
+  // Termina al detectar "acumulado" (sección "Rendimiento acumulado" más abajo).
+  const fondos = [];
+  let inFondos = false;
+  for (let i = 0; i < display.length; i++) {
+    const blob = display[i].join(' ').toLowerCase();
+    if (!inFondos) {
+      if (blob.indexOf('rendimiento diario') >= 0) inFondos = true;
+      continue;
+    }
+    if (blob.indexOf('acumulado') >= 0) break;
+
+    const fecha       = String(display[i][1] || '').trim();
+    const totalStr    = String(display[i][2] || '').trim();
+    const gananciaStr = String(display[i][3] || '').trim();
+    const diarioStr   = String(display[i][4] || '').trim();
+    const anualStr    = String(display[i][5] || '').trim();
+    const mensualStr  = String(display[i][6] || '').trim();
+    const totalNum    = toNumber(raw[i][2]);
+    const gananciaNum = toNumber(raw[i][3]);
+
+    // Filas claramente vacías
+    if (!fecha && !totalStr && !gananciaStr && !diarioStr) continue;
+
+    fondos.push({
+      fecha:       fecha,
+      total:       totalNum,
+      totalStr:    totalStr,
+      ganancia:    gananciaNum,
+      gananciaStr: gananciaStr,
+      diario:      diarioStr,
+      anual:       anualStr,
+      mensual:     mensualStr,
+    });
+  }
+
   // ===== PERSONAL (col E texto + col F fecha/hora, fila 3 en adelante) =====
   const personal = [];
   for (let i = 2; i < display.length; i++) {
@@ -238,6 +281,7 @@ function getInforme() {
   return {
     rows:         rows,
     disponibleVW: disponibleVW,
+    fondos:       fondos,
     personal:     personal,
     updatedAt:    new Date().toISOString(),
   };

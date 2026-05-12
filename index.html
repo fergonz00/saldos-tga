@@ -1260,8 +1260,49 @@ function renderBancos() {
   ` : '';
 
   const seccionesHtml = secciones.map(sec => renderSeccionBanco(sec)).join('');
+  const fondosHtml = renderSeccionFondos(data.fondos || []);
 
-  wrap.innerHTML = dispCard + seccionesHtml;
+  wrap.innerHTML = dispCard + seccionesHtml + fondosHtml;
+}
+
+function renderSeccionFondos(fondos) {
+  if (!fondos.length) return '';
+  const filas = fondos.map(f => {
+    const totalShow    = f.total !== 0 ? fmtMoney(f.total) : (f.totalStr || '—');
+    const gananciaShow = f.ganancia !== 0 ? fmtMoney(f.ganancia) : (f.gananciaStr || '—');
+    const isFila0      = String(f.fecha || '').trim() === '0';   // fila de totales = "0"
+    const fechaShow    = isFila0 ? 'Total' : (f.fecha || '—');
+    const trClass      = isFila0 ? 'total-row' : '';
+    return `<tr class="${trClass}">
+      <td>${escapeHtml(fechaShow)}</td>
+      <td class="num importe">${totalShow}</td>
+      <td class="num importe">${gananciaShow}</td>
+      <td class="num">${escapeHtml(f.diario || '—')}</td>
+      <td class="num">${escapeHtml(f.anual || '—')}</td>
+      <td class="num">${escapeHtml(f.mensual || '—')}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="bank-section">
+      <div class="sec-head"><h3>Rendimiento diario Fondos</h3></div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th class="num">Total fondo</th>
+              <th class="num">Ganancia día</th>
+              <th class="num">Diario %</th>
+              <th class="num">Anual %</th>
+              <th class="num">Mensual %</th>
+            </tr>
+          </thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 function renderSeccionBanco(sec) {
