@@ -278,33 +278,56 @@ tbody tr.row-selected:hover { background: rgba(0,30,80,0.10); }
 tbody tr.sep-row { background: transparent; border: none; }
 tbody tr.sep-row td { padding: 4px 0; border: none; }
 tbody tr.sep-row + tr td { border-top: none; }
-tbody tr.header-row td {
-  background: var(--vw-grey-1); color: var(--vw-blue);
-  font-weight: 700; font-size: 12px;
-  text-transform: uppercase; letter-spacing: 0.5px;
-  padding: 8px 12px;
+tbody tr.total-row td {
+  background: rgba(0,30,80,0.04); font-weight: 700; color: var(--vw-blue);
+  border-top: 1px solid var(--vw-grey-2);
 }
+tbody tr.total-row.neg td { color: var(--red); background: rgba(239,68,68,0.06); }
+td.num.neg, td.importe.neg { color: var(--red); }
+
+.bank-section {
+  background: white; border-radius: var(--radius);
+  box-shadow: var(--shadow); margin-bottom: 14px;
+  overflow: hidden;
+}
+.bank-section .sec-head {
+  padding: 12px 18px; background: var(--vw-blue); color: white;
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px;
+}
+.bank-section .sec-head h3 {
+  font-size: 13px; font-weight: 700; letter-spacing: 0.5px;
+  text-transform: uppercase; color: white;
+}
+.bank-section .sec-amount {
+  font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: white;
+}
+.bank-section table tbody tr:first-child td { border-top: none; }
+.bank-section table tbody td:first-child { padding-left: 18px; }
+.bank-section table tbody td:last-child  { padding-right: 18px; }
 
 .personal-wrap {
   background: white; border-radius: var(--radius);
   box-shadow: var(--shadow); overflow: hidden;
 }
-.personal-head {
-  padding: 14px 18px; border-bottom: 1px solid var(--vw-grey-2);
+.personal-body { padding: 0; }
+.personal-header-main {
+  padding: 16px 20px; background: var(--vw-blue); color: white;
+  font-size: 15px; font-weight: 700; letter-spacing: 0.3px;
+  text-transform: uppercase;
 }
-.personal-head h3 { font-size: 14px; font-weight: 600; color: var(--vw-blue); }
-.personal-body { padding: 8px 0; }
-.personal-header {
-  padding: 12px 18px 6px;
-  font-size: 11px; font-weight: 700;
+.personal-subhead {
+  padding: 10px 20px 6px;
+  font-size: 12px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.6px;
   color: var(--vw-grey-4);
-  border-top: 1px solid var(--vw-grey-2);
   background: var(--vw-grey-1);
+  border-top: 1px solid var(--vw-grey-2);
 }
-.personal-header:first-child { border-top: none; }
+.personal-sep { height: 6px; }
 .personal-item {
-  padding: 9px 18px; font-size: 13px;
+  padding: 10px 20px; font-size: 13px;
   border-bottom: 1px solid var(--vw-grey-2);
   color: var(--vw-black);
 }
@@ -1164,7 +1187,9 @@ function selectAllProxVtos() {
 }
 
 // =======================================================================
-// BANCOS · render
+// BANCOS · render — agrupa filas por sección detectada en el Apps Script.
+// Renderiza cada sección como su propia card; preserva headers, subtotales
+// y filas regulares con estilos diferenciados. NO inventa un total general.
 // =======================================================================
 function renderBancos() {
   const wrap = document.getElementById('bancosContent');
@@ -1174,62 +1199,85 @@ function renderBancos() {
     wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando INFORME...</div></div>';
     return;
   }
-  const saldos = Array.isArray(data.saldos) ? data.saldos : [];
+  const rows = Array.isArray(data.rows) ? data.rows : [];
   const dispVW = Number(data.disponibleVW) || 0;
 
-  if (!saldos.length && !dispVW) {
+  if (!rows.length && !dispVW) {
     wrap.innerHTML = '<div class="empty"><div class="ico">🏦</div><div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin datos en la hoja INFORME</div></div>';
     return;
   }
 
-  // Sumatorias: total general (todos los valores numéricos)
-  const total = saldos.reduce((acc, r) => acc + (r && !r.separator ? (Number(r.valor) || 0) : 0), 0);
-
-  const filasHtml = saldos.map(r => {
-    if (r.separator) return '<tr class="sep-row"><td colspan="2"></td></tr>';
-    const concepto = String(r.concepto || '').trim();
-    const valorNum = Number(r.valor) || 0;
-    const tieneValor = valorNum !== 0 || (String(r.valorMostrar || '').trim().length > 0 && String(r.valorMostrar).indexOf('-') !== 0);
-    const esHeader = !tieneValor && concepto.length > 0;
-    if (esHeader) {
-      return `<tr class="header-row"><td colspan="2">${escapeHtml(concepto)}</td></tr>`;
+  // Agrupar por sección: cada header inicia una sección; los `sep` se ignoran salvo para cortar visualmente.
+  const secciones = [];
+  let actual = null;
+  rows.forEach(r => {
+    if (r.tipo === 'header') {
+      actual = { titulo: r.concepto || '', valorHeader: Number(r.valor) || 0, items: [] };
+      secciones.push(actual);
+    } else if (r.tipo === 'sep') {
+      // Si todavía no hay sección, ignoramos. Si hay, marcamos próximo bloque.
+      if (actual && actual.items.length) actual.items.push({ tipo: 'sep' });
+    } else {
+      if (!actual) {
+        actual = { titulo: '', valorHeader: 0, items: [] };
+        secciones.push(actual);
+      }
+      actual.items.push(r);
     }
-    const valStr = valorNum !== 0 ? fmtMoney(valorNum) : escapeHtml(r.valorMostrar || '');
-    return `<tr>
-      <td>${escapeHtml(concepto)}</td>
-      <td class="num importe">${valStr}</td>
-    </tr>`;
-  }).join('');
+  });
 
-  const cardDispVW = `
+  const dispCard = dispVW ? `
     <div class="cards" style="grid-template-columns: 1fr;">
       <div class="card good" style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);">
         <div class="label">Disponible para aplicar en VW</div>
         <div class="value">${fmtMoney(dispVW)}</div>
-        <div class="sub">INFORME · fila 47 col D</div>
+        <div class="sub">INFORME · "Saldos disponibles VW"</div>
       </div>
     </div>
-  `;
+  ` : '';
 
-  wrap.innerHTML = `
-    ${cardDispVW}
-    <div class="table-wrap">
-      <div class="table-head">
-        <h3>Bancos y disponibilidades</h3>
-        <span class="count">${saldos.filter(r => !r.separator).length} concepto${saldos.length === 1 ? '' : 's'}</span>
-      </div>
+  const seccionesHtml = secciones.map(sec => renderSeccionBanco(sec)).join('');
+
+  wrap.innerHTML = dispCard + seccionesHtml;
+}
+
+function renderSeccionBanco(sec) {
+  const headerValor = sec.valorHeader ? `<span class="sec-amount">${fmtMoney(sec.valorHeader)}</span>` : '';
+  const titulo = sec.titulo
+    ? `<div class="sec-head"><h3>${escapeHtml(sec.titulo)}</h3>${headerValor}</div>`
+    : '';
+
+  // Si la sección no tiene items, mostramos solo el header.
+  if (!sec.items.length) {
+    if (!titulo) return '';
+    return `<div class="bank-section">${titulo}</div>`;
+  }
+
+  const filasHtml = sec.items.map(r => {
+    if (r.tipo === 'sep') return '<tr class="sep-row"><td colspan="2"></td></tr>';
+    const concepto = String(r.concepto || '').trim();
+    const valorNum = Number(r.valor) || 0;
+    const valorTxt = String(r.valorMostrar || '').trim();
+    const negativo = valorNum < 0 || /^-/.test(valorTxt);
+    const valShow = valorNum !== 0 ? fmtMoney(valorNum) : (valorTxt || '—');
+    if (r.tipo === 'total') {
+      return `<tr class="total-row ${negativo ? 'neg' : ''}">
+        <td>${escapeHtml(concepto)}</td>
+        <td class="num importe">${valShow}</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td>${escapeHtml(concepto)}</td>
+      <td class="num importe ${negativo ? 'neg' : ''}">${valShow}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="bank-section">
+      ${titulo}
       <div class="table-scroll">
         <table>
-          <thead>
-            <tr><th>Concepto</th><th class="num">Valor</th></tr>
-          </thead>
           <tbody>${filasHtml}</tbody>
-          <tfoot>
-            <tr>
-              <td style="text-align:right">Total</td>
-              <td class="num">${fmtMoney(total)}</td>
-            </tr>
-          </tfoot>
         </table>
       </div>
     </div>
@@ -1252,24 +1300,16 @@ function renderPersonal() {
     wrap.innerHTML = '<div class="empty"><div class="ico">👥</div><div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin novedades del personal</div></div>';
     return;
   }
-  const filas = items.map(r => {
-    const txt = String(r.texto || '').trim();
-    // Heurística: si parece header (todo en mayúsculas y sin números) lo destaco
-    const upper = txt === txt.toUpperCase();
-    const tieneNumeros = /\d/.test(txt);
-    const esHeader = upper && !tieneNumeros && txt.length < 50;
-    if (esHeader) return `<div class="personal-header">${escapeHtml(txt)}</div>`;
-    return `<div class="personal-item">${escapeHtml(txt)}</div>`;
+
+  const html = items.map(r => {
+    const t = String(r.texto || '').trim();
+    if (r.tipo === 'header')   return `<div class="personal-header-main">${escapeHtml(t)}</div>`;
+    if (r.tipo === 'subhead')  return `<div class="personal-subhead">${escapeHtml(t)}</div>`;
+    if (r.tipo === 'sep')      return '<div class="personal-sep"></div>';
+    return `<div class="personal-item">${escapeHtml(t)}</div>`;
   }).join('');
 
-  wrap.innerHTML = `
-    <div class="personal-wrap">
-      <div class="personal-head">
-        <h3>Novedades del personal</h3>
-      </div>
-      <div class="personal-body">${filas}</div>
-    </div>
-  `;
+  wrap.innerHTML = `<div class="personal-wrap"><div class="personal-body">${html}</div></div>`;
 }
 
 function fmtDateKey(d) {

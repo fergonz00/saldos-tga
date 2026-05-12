@@ -128,12 +128,34 @@ function getCompras() {
 // =======================================================================
 // INFORME — Bancos / disponibilidades / Personal
 // =======================================================================
-// Lee la hoja "INFORME" y devuelve:
-//   - saldos: [{ concepto, valor, valorMostrar }]   (col C/D desde fila 3
-//             hasta detectar la sección "rendimiento")
-//   - disponibleVW: número en D47 (disponible para aplicar en VW)
-//   - personal: [{ texto }]                          (col E desde fila 3
-//             hasta detectar la sección "factura")
+// Estructura de la hoja INFORME (columnas C concepto / D valor):
+//   - DISPONIBILIDADES $       (header)
+//     Santander Cta Cte, Banco Galicia, Cheques, Efectivo, PFs, Fondos, USD, etc.
+//     Subtotales: "Total Fondos de Inversion", "Total u$s"
+//     Filas especiales: "Depósitos judiciales ...", "Stock de Planes ..."
+//   - DISP FUTURAS              (header)
+//     AFIP, IIBB CABA / Pcia / ER, Imp DB/CR, Cheques Diferidos, Total
+//   - DETALLE DE CHEQDIF        (header)
+//     Del 1 al 10, 11 al 20, 21 al 31, Meses siguiente
+//   - SALDOS DISPONIBLES VW     (header con valor)  ← este es el disponible-VW
+//     Saldo Disponible VW Credit x6
+//     TOTAL DISP
+//   - DEUDAS EN FABRICA         (header)
+//     VW Arg y Financiera (unidades), TOTAL DEUDA VW Unidades, Total Deuda en VW - Disp
+//   - (luego viene "Rendimiento diario Fondos" → SE CORTA acá)
+//
+// Para personal (col E):
+//   - NOVEDADES DEL PERSONAL    (header), subhead Reincorp
+//   - Ausentes (subheader) + items con fecha
+//   - Tarde (subheader) + items con hora
+//   - (luego viene "PROVEEDORES" → SE CORTA acá)
+//
+// Cada fila se devuelve con un `tipo` para que el frontend la pinte:
+//   - 'header'   → encabezado de sección, todo en mayúsculas, sin número
+//   - 'subhead'  → subencabezado (Ausentes / Tarde / Reincorp ...)
+//   - 'total'    → fila que arranca con "Total" / "TOTAL" / "Subtotal"
+//   - 'row'      → fila normal concepto + valor
+//   - 'sep'      → fila en blanco (separador visual)
 function getInforme() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(SHEET_INFORME);
@@ -142,54 +164,103 @@ function getInforme() {
   const lastRow = Math.max(sh.getLastRow(), 80);
   const lastCol = Math.max(sh.getLastColumn(), 6);
   if (lastRow < 3) {
-    return { saldos: [], disponibleVW: 0, personal: [], updatedAt: new Date().toISOString() };
+    return { rows: [], disponibleVW: 0, personal: [], updatedAt: new Date().toISOString() };
   }
 
   const display = sh.getRange(1, 1, lastRow, lastCol).getDisplayValues();
   const raw     = sh.getRange(1, 1, lastRow, lastCol).getValues();
 
-  // SALDOS / DISPONIBILIDADES (col C/D desde fila 3)
-  const saldos = [];
+  // ===== SALDOS (col C / D, fila 3 en adelante) =====
+  const rows = [];
   let disponibleVW = 0;
-  let lastWasSep = true; // evitar separadores duplicados al inicio
-  for (let i = 2; i < display.length; i++) {            // i=2 → fila 3
-    const concepto = String(display[i][2] || '').trim(); // col C
-    const valorStr = String(display[i][3] || '').trim(); // col D
+  let lastWasSep = true;
+  for (let i = 2; i < display.length; i++) {
+    const concepto = String(display[i][2] || '').trim();
+    const valorStr = String(display[i][3] || '').trim();
     const valorNum = toNumber(raw[i][3]);
     const lower    = concepto.toLowerCase();
 
-    // Captura especial: D47 = disponible VW (i=46 → fila 47)
+    // Captura D47 = disponible VW (también puede venir del header SALDOS DISPONIBLES VW)
     if (i === 46) disponibleVW = valorNum;
 
-    // Cortar cuando entramos en "rendimiento diario de fondos"
+    // Cortar al entrar en la sección "rendimiento diario de fondos"
     if (lower.indexOf('rendimiento') >= 0) break;
 
-    // Fila completamente vacía → separador (para agrupar visualmente)
+    // Fila vacía → separador
     if (!concepto && !valorStr) {
-      if (!lastWasSep) { saldos.push({ separator: true }); lastWasSep = true; }
+      if (!lastWasSep) { rows.push({ tipo: 'sep' }); lastWasSep = true; }
       continue;
     }
     lastWasSep = false;
-    saldos.push({ concepto, valor: valorNum, valorMostrar: valorStr });
-  }
-  // Limpiar separador final
-  while (saldos.length && saldos[saldos.length - 1].separator) saldos.pop();
 
-  // PERSONAL (col E desde fila 3, hasta detectar "factura")
+    rows.push(_clasificarFilaSaldo(concepto, valorStr, valorNum));
+  }
+  while (rows.length && rows[rows.length - 1].tipo === 'sep') rows.pop();
+
+  // Si el header "SALDOS DISPONIBLES VW" tiene su propio valor lo usamos
+  // como fallback en caso de que D47 no haya capturado nada.
+  if (!disponibleVW) {
+    const found = rows.find(r => r.tipo === 'header' && /saldos\s+disponibles\s+vw/i.test(r.concepto || ''));
+    if (found && found.valor) disponibleVW = found.valor;
+  }
+
+  // ===== PERSONAL (col E, fila 3 en adelante) =====
   const personal = [];
   for (let i = 2; i < display.length; i++) {
-    const txt = String(display[i][4] || '').trim();    // col E
-    if (!txt) continue;
-    if (txt.toLowerCase().indexOf('factura') >= 0) break;
-    personal.push({ texto: txt });
+    const txt = String(display[i][4] || '').trim();
+    if (!txt) {
+      // Mantener un solo separador entre bloques
+      if (personal.length && personal[personal.length - 1].tipo !== 'sep') {
+        personal.push({ tipo: 'sep' });
+      }
+      continue;
+    }
+    // Sección "PROVEEDORES" o "FACTURAS" → corte
+    if (/proveedor/i.test(txt) || /^factura/i.test(txt)) break;
+    personal.push(_clasificarFilaPersonal(txt));
   }
+  while (personal.length && personal[personal.length - 1].tipo === 'sep') personal.pop();
 
   return {
-    saldos:       saldos,
+    rows:         rows,
     disponibleVW: disponibleVW,
     personal:     personal,
     updatedAt:    new Date().toISOString(),
   };
+}
+
+// Clasifica una fila de saldos en header/total/row.
+function _clasificarFilaSaldo(concepto, valorStr, valorNum) {
+  const letras = concepto.replace(/[^a-záéíóúñü]/gi, '');
+  const esTodoMayus = letras.length >= 3 && letras === letras.toUpperCase();
+  const empiezaTotal = /^(total|subtotal)\b/i.test(concepto);
+  const tieneValor = valorNum !== 0 || (valorStr && valorStr !== '$ -' && valorStr !== '-');
+
+  // Header de sección: texto todo en mayúsculas y SIN valor (DISPONIBILIDADES, DISP FUTURAS, etc.)
+  // Excepción: "SALDOS DISPONIBLES VW" tiene valor pero queremos mostrarlo como header destacado.
+  if (esTodoMayus && (!tieneValor || /saldos\s+disponibles\s+vw/i.test(concepto) || /deudas\s+en\s+fabrica/i.test(concepto))) {
+    return { tipo: 'header', concepto, valor: valorNum, valorMostrar: valorStr };
+  }
+  if (empiezaTotal) {
+    return { tipo: 'total', concepto, valor: valorNum, valorMostrar: valorStr };
+  }
+  return { tipo: 'row', concepto, valor: valorNum, valorMostrar: valorStr };
+}
+
+// Clasifica una fila de personal en header/subhead/item.
+function _clasificarFilaPersonal(texto) {
+  // Header grande (NOVEDADES DEL PERSONAL...)
+  if (/novedades\s+del\s+personal/i.test(texto)) {
+    return { tipo: 'header', texto };
+  }
+  // Subheader corto: Ausentes / Tarde / Reincorp(orados) — texto corto sin números/dos puntos
+  const corto = texto.length <= 30;
+  const sinDigitos = !/\d/.test(texto);
+  const sinDelimiter = !/[:\(\)\-,]/.test(texto);
+  if (corto && sinDigitos && sinDelimiter) {
+    return { tipo: 'subhead', texto };
+  }
+  return { tipo: 'item', texto };
 }
 
 // =======================================================================
