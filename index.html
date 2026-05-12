@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compras y Saldos · TGA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --vw-blue: #001E50;
+  --vw-blue-light: #00437A;
+  --vw-white: #FFFFFF;
+  --vw-grey-1: #F5F5F5;
+  --vw-grey-2: #E5E5E5;
+  --vw-grey-3: #999999;
+  --vw-grey-4: #666666;
+  --vw-black: #1A1A1A;
+  --green: #10B981;
+  --green-soft: #D1FAE5;
+  --orange: #F59E0B;
+  --orange-soft: #FEF3C7;
+  --red: #EF4444;
+  --red-soft: #FEE2E2;
+  --radius: 12px;
+  --shadow: 0 2px 12px rgba(0,30,80,0.08);
+  --shadow-lg: 0 8px 32px rgba(0,30,80,0.12);
+  --font: 'DM Sans', sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: var(--font); background: var(--vw-grey-1); color: var(--vw-black); min-height:100vh; -webkit-font-smoothing: antialiased; }
+button { font-family: var(--font); cursor: pointer; border: none; }
+a { color: inherit; text-decoration: none; }
+.hidden { display: none !important; }
+
+.app-header {
+  background: var(--vw-blue);
+  color: white;
+  padding: 14px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+}
+.app-header .brand { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+.app-header .user-info { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.app-header .user-name { opacity: 0.9; }
+.app-header button {
+  background: rgba(255,255,255,0.15);
+  color: white; padding: 8px 14px;
+  border-radius: 6px; font-size: 13px; font-weight: 500;
+  transition: background 0.2s;
+}
+.app-header button:hover { background: rgba(255,255,255,0.25); }
+
+.wrap { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
+h2 { font-size: 22px; font-weight: 700; color: var(--vw-blue); margin-bottom: 4px; }
+.lead { font-size: 14px; color: var(--vw-grey-4); margin-bottom: 20px; }
+
+.tabs {
+  display: flex; gap: 4px; border-bottom: 2px solid var(--vw-grey-2);
+  margin-bottom: 20px; overflow-x: auto;
+}
+.tab {
+  padding: 12px 18px; background: transparent;
+  font-size: 14px; font-weight: 600; color: var(--vw-grey-4);
+  border-bottom: 2px solid transparent; margin-bottom: -2px;
+  white-space: nowrap; transition: all 0.15s;
+}
+.tab:hover { color: var(--vw-blue); }
+.tab.active { color: var(--vw-blue); border-bottom-color: var(--vw-blue); }
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+.toolbar {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.toolbar .updated { font-size: 12px; color: var(--vw-grey-3); }
+.toolbar button.refresh {
+  background: var(--vw-blue); color: white;
+  padding: 8px 14px; border-radius: 6px;
+  font-size: 13px; font-weight: 600;
+}
+.toolbar button.refresh:hover { background: var(--vw-blue-light); }
+.toolbar button.refresh:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.filters {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.filter-btn {
+  padding: 7px 14px; background: white; color: var(--vw-grey-4);
+  border: 1px solid var(--vw-grey-2); border-radius: 100px;
+  font-size: 13px; font-weight: 500;
+}
+.filter-btn.active {
+  background: var(--vw-blue); color: white; border-color: var(--vw-blue);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px; margin-bottom: 22px;
+}
+.card {
+  background: white; border-radius: var(--radius);
+  padding: 18px 18px 16px; box-shadow: var(--shadow);
+  position: relative;
+}
+.card .label {
+  font-size: 11px; color: var(--vw-grey-3);
+  text-transform: uppercase; letter-spacing: 0.6px;
+  font-weight: 600; margin-bottom: 6px;
+}
+.card .value {
+  font-size: 22px; font-weight: 700; color: var(--vw-blue);
+  letter-spacing: -0.5px; line-height: 1.1;
+}
+.card .sub {
+  font-size: 12px; color: var(--vw-grey-4); margin-top: 6px;
+}
+.card.warn .value { color: var(--orange); }
+.card.bad .value { color: var(--red); }
+.card.good .value { color: var(--green); }
+.card.editable .edit {
+  position: absolute; top: 12px; right: 12px;
+  background: none; padding: 4px; border-radius: 4px;
+  color: var(--vw-grey-3); font-size: 13px;
+}
+.card.editable .edit:hover { background: var(--vw-grey-1); color: var(--vw-blue); }
+
+.table-wrap {
+  background: white; border-radius: var(--radius);
+  box-shadow: var(--shadow); overflow: hidden;
+}
+.table-wrap .table-head {
+  padding: 14px 18px; border-bottom: 1px solid var(--vw-grey-2);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 8px;
+}
+.table-wrap .table-head h3 {
+  font-size: 14px; font-weight: 600; color: var(--vw-blue);
+}
+.table-wrap .table-head .count {
+  font-size: 12px; color: var(--vw-grey-4);
+}
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  background: var(--vw-grey-1); color: var(--vw-grey-4);
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 10px 12px; text-align: left;
+  position: sticky; top: 0; z-index: 1;
+  border-bottom: 1px solid var(--vw-grey-2);
+  white-space: nowrap;
+}
+thead th.num, tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr { border-bottom: 1px solid var(--vw-grey-2); }
+tbody tr:hover { background: var(--vw-grey-1); }
+tbody td { padding: 10px 12px; vertical-align: top; }
+tbody td.serie { font-family: monospace; font-size: 12px; color: var(--vw-grey-4); }
+tbody td.importe { font-weight: 600; color: var(--vw-blue); }
+tbody td.vence { white-space: nowrap; }
+tbody td .pill {
+  display: inline-block; font-size: 10px; font-weight: 600;
+  padding: 2px 7px; border-radius: 100px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.pill.impaga { background: var(--orange-soft); color: #92400E; }
+.pill.pagada { background: var(--green-soft); color: #065F46; }
+.pill.vencida { background: var(--red-soft); color: #991B1B; }
+tfoot td {
+  padding: 12px; font-weight: 700; color: var(--vw-blue);
+  border-top: 2px solid var(--vw-grey-2);
+  background: var(--vw-grey-1);
+}
+
+.empty, .loading, .errbox {
+  background: white; border-radius: var(--radius);
+  padding: 48px 24px; text-align: center;
+  box-shadow: var(--shadow);
+  color: var(--vw-grey-3);
+}
+.empty .ico, .loading .ico, .errbox .ico {
+  font-size: 36px; margin-bottom: 10px; opacity: 0.6;
+}
+.errbox { color: var(--red); }
+.errbox .ttl { font-weight: 700; margin-bottom: 6px; }
+.errbox .det { font-size: 12px; color: var(--vw-grey-4); margin-top: 8px; font-family: monospace; word-break: break-word; }
+.loading .spinner {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid var(--vw-grey-2);
+  border-top-color: var(--vw-blue);
+  animation: spin 0.7s linear infinite;
+  margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.gate {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--vw-blue) 0%, var(--vw-blue-light) 100%);
+  padding: 20px;
+}
+.gate-box {
+  background: white; border-radius: var(--radius);
+  padding: 36px 28px; max-width: 380px; width: 100%;
+  text-align: center; box-shadow: var(--shadow-lg);
+}
+.gate-box .logo { font-size: 24px; font-weight: 700; color: var(--vw-blue); margin-bottom: 6px; }
+.gate-box .msg { font-size: 14px; color: var(--vw-grey-4); margin-bottom: 22px; }
+.gate-box a.btn {
+  display: inline-block; padding: 12px 22px;
+  background: var(--vw-blue); color: white;
+  border-radius: 8px; font-size: 14px; font-weight: 600;
+}
+.gate-box a.btn:hover { background: var(--vw-blue-light); }
+
+@media (max-width: 600px) {
+  .wrap { padding: 16px 12px 40px; }
+  .card .value { font-size: 18px; }
+  thead th, tbody td { padding: 8px 10px; font-size: 12px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== GATE ==================== -->
+<div id="gateScreen" class="gate hidden">
+  <div class="gate-box">
+    <div class="logo">Compras y Saldos</div>
+    <div class="msg" id="gateMsg">Esta vista es privada.</div>
+    <a class="btn" href="https://titogonzalez.online">← Volver al portal</a>
+  </div>
+</div>
+
+<!-- ==================== APP ==================== -->
+<div id="appScreen" class="hidden">
+  <header class="app-header">
+    <div class="brand">💰 Compras y Saldos</div>
+    <div class="user-info">
+      <span class="user-name" id="userName"></span>
+      <button onclick="window.location.href='https://titogonzalez.online'">← Portal</button>
+      <button onclick="logout()">Salir</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h2>Resumen financiero</h2>
+    <p class="lead">Seguimiento de unidades VW por estado de pago, saldos de bancos y línea VW Credit.</p>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="compras" onclick="setTab('compras')">Compras VW</button>
+      <button class="tab" data-tab="bancos" onclick="setTab('bancos')">Bancos</button>
+      <button class="tab" data-tab="vwcredit" onclick="setTab('vwcredit')">VW Credit</button>
+    </div>
+
+    <!-- =================== PANEL COMPRAS =================== -->
+    <section class="panel active" id="panelCompras">
+      <div class="toolbar">
+        <div class="updated" id="updatedAt">—</div>
+        <button class="refresh" id="btnRefresh" onclick="loadCompras()">Actualizar</button>
+      </div>
+
+      <div id="comprasContent"></div>
+    </section>
+
+    <!-- =================== PANEL BANCOS =================== -->
+    <section class="panel" id="panelBancos">
+      <div class="empty">
+        <div class="ico">🏦</div>
+        <div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Saldos de bancos</div>
+        <div style="font-size:13px; margin-top:6px">Próximo paso. Definimos qué bloques del INFORME mostramos.</div>
+      </div>
+    </section>
+
+    <!-- =================== PANEL VW CREDIT =================== -->
+    <section class="panel" id="panelVwcredit">
+      <div class="empty">
+        <div class="ico">💳</div>
+        <div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Saldo VW Credit</div>
+        <div style="font-size:13px; margin-top:6px">Próximo paso. Definimos detalles a mostrar (vencimientos VWFS, deudas en fábrica, etc).</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+// =======================================================================
+// CONFIG
+// =======================================================================
+const SHARED_COOKIE = 'tga_session';
+const SHARED_DOMAIN = '.titogonzalez.online';
+const USUARIOS_PERMITIDOS = ['fngonzalez'];
+
+// URL del Web App publicado en la planilla espejo.
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwjt4paF1ZmMVKXKhYJ-JT-N_VZYOSDoFJJDmDlmGTgaheVB4KdBYI3suj0utV01cXZdg/exec';
+const APPS_SCRIPT_TOKEN = 'tga-saldos-K9Mx2P7vQ';
+
+// Estado in-memory
+let lastCompras = null;
+let filterStatus = 'impagas'; // 'impagas' | 'todas' | 'pagadas'
+
+// =======================================================================
+// SESIÓN (cookie SSO compartida)
+// =======================================================================
+function getSharedCookie() {
+  const m = document.cookie.match(new RegExp('(?:^|;\\s*)' + SHARED_COOKIE + '=([^;]+)'));
+  if (!m) return null;
+  try { return JSON.parse(decodeURIComponent(m[1])); } catch { return null; }
+}
+function clearSharedCookie() {
+  document.cookie = SHARED_COOKIE + '=; path=/; domain=' + SHARED_DOMAIN + '; max-age=0; Secure; SameSite=Lax';
+}
+
+function showGate(msg) {
+  document.getElementById('gateMsg').textContent = msg || 'Esta vista es privada.';
+  document.getElementById('appScreen').classList.add('hidden');
+  document.getElementById('gateScreen').classList.remove('hidden');
+}
+function enterApp(session) {
+  document.getElementById('gateScreen').classList.add('hidden');
+  document.getElementById('appScreen').classList.remove('hidden');
+  document.getElementById('userName').textContent = session.nombre || session.usuario;
+  loadCompras();
+}
+function logout() {
+  clearSharedCookie();
+  try { localStorage.removeItem('portal_tga_session'); } catch {}
+  window.location.href = 'https://titogonzalez.online';
+}
+
+// =======================================================================
+// TABS
+// =======================================================================
+function setTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  const map = { compras: 'panelCompras', bancos: 'panelBancos', vwcredit: 'panelVwcredit' };
+  const el = document.getElementById(map[tab]);
+  if (el) el.classList.add('active');
+}
+
+// =======================================================================
+// COMPRAS · fetch + render
+// =======================================================================
+async function loadCompras() {
+  const wrap = document.getElementById('comprasContent');
+  const btn = document.getElementById('btnRefresh');
+  btn.disabled = true; btn.textContent = 'Cargando...';
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando datos...</div></div>';
+
+  if (APPS_SCRIPT_URL.indexOf('__APPS_SCRIPT_URL_PENDIENTE__') === 0) {
+    wrap.innerHTML = '<div class="errbox"><div class="ico">⚙️</div>'
+      + '<div class="ttl">Falta conectar la planilla</div>'
+      + '<div>Pendiente: publicar el Apps Script y pegar la URL en <code>index.html</code>.</div></div>';
+    btn.disabled = false; btn.textContent = 'Actualizar';
+    return;
+  }
+
+  try {
+    const url = APPS_SCRIPT_URL + '?token=' + encodeURIComponent(APPS_SCRIPT_TOKEN) + '&tipo=compras';
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data && data.error) throw new Error(data.error);
+    lastCompras = data;
+    renderCompras(data);
+  } catch (e) {
+    console.error(e);
+    wrap.innerHTML = '<div class="errbox"><div class="ico">⚠️</div>'
+      + '<div class="ttl">No se pudo cargar la planilla</div>'
+      + '<div class="det">' + escapeHtml(e.message || String(e)) + '</div></div>';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Actualizar';
+  }
+}
+
+function renderCompras(data) {
+  const wrap = document.getElementById('comprasContent');
+  const unidades = Array.isArray(data.unidades) ? data.unidades : [];
+  const floorPlan           = Number(data.floorPlan) || 0;
+  const deudaFloorPlan      = Number(data.deudaFloorPlan) || 0;
+  const disponibleFloorPlan = Number(data.disponibleFloorPlan) || 0;
+  const disponibleVW        = Number(data.disponibleVW) || 0;
+
+  const impagas = unidades.filter(u => u.impaga);
+  const pagadas = unidades.filter(u => !u.impaga && u.fechaPago);
+
+  const cards = `
+    <div class="cards">
+      <div class="card">
+        <div class="label">Floor Plan</div>
+        <div class="value">${fmtMoney(floorPlan)}</div>
+        <div class="sub">Línea de crédito con VW</div>
+      </div>
+      <div class="card warn">
+        <div class="label">Deuda Floor Plan</div>
+        <div class="value">${fmtMoney(deudaFloorPlan)}</div>
+        <div class="sub">${impagas.length} unidad${impagas.length === 1 ? '' : 'es'} impaga${impagas.length === 1 ? '' : 's'}</div>
+      </div>
+      <div class="card ${disponibleFloorPlan >= 0 ? 'good' : 'bad'}">
+        <div class="label">Disponible Floor Plan</div>
+        <div class="value">${fmtMoney(disponibleFloorPlan)}</div>
+        <div class="sub">Floor Plan − deuda</div>
+      </div>
+      <div class="card good">
+        <div class="label">Disponible para pagar VW</div>
+        <div class="value">${fmtMoney(disponibleVW)}</div>
+        <div class="sub">$ que figura en VW para aplicar</div>
+      </div>
+    </div>
+  `;
+
+  const filtros = `
+    <div class="filters">
+      <button class="filter-btn ${filterStatus === 'impagas' ? 'active' : ''}" onclick="setFilterStatus('impagas')">Solo impagas (${impagas.length})</button>
+      <button class="filter-btn ${filterStatus === 'todas' ? 'active' : ''}" onclick="setFilterStatus('todas')">Todas (${unidades.length})</button>
+      <button class="filter-btn ${filterStatus === 'pagadas' ? 'active' : ''}" onclick="setFilterStatus('pagadas')">Pagadas (${pagadas.length})</button>
+    </div>
+  `;
+
+  const tableHtml = renderTablaUnidades(unidades);
+
+  wrap.innerHTML = cards + filtros + tableHtml;
+
+  // Updated at
+  if (data.updatedAt) {
+    document.getElementById('updatedAt').textContent = 'Actualizado: ' + new Date(data.updatedAt).toLocaleString('es-AR');
+  }
+}
+
+function setFilterStatus(s) {
+  filterStatus = s;
+  if (lastCompras) renderCompras(lastCompras);
+}
+
+function renderTablaUnidades(unidades) {
+  let filas;
+  if (filterStatus === 'impagas') filas = unidades.filter(u => u.impaga);
+  else if (filterStatus === 'pagadas') filas = unidades.filter(u => !u.impaga && u.fechaPago);
+  else filas = unidades.slice();
+
+  // Ordenar por fecha de vencimiento (más próxima primero)
+  filas.sort((a, b) => {
+    const da = parseFechaCorta(a.vence);
+    const db = parseFechaCorta(b.vence);
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return da - db;
+  });
+
+  if (!filas.length) {
+    return '<div class="empty"><div class="ico">✅</div><div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin unidades en esta vista</div></div>';
+  }
+
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+
+  const rows = filas.map(u => {
+    const vence = parseFechaCorta(u.vence);
+    let pill = '';
+    if (u.impaga) {
+      if (vence && vence < hoy) pill = '<span class="pill vencida">Vencida</span>';
+      else pill = '<span class="pill impaga">Impaga</span>';
+    } else if (u.fechaPago) {
+      pill = '<span class="pill pagada">Pagada</span>';
+    }
+    const importeMostrar = u.impaga ? u.importe : u.total;
+    return `
+      <tr>
+        <td>${pill}</td>
+        <td class="vence">${escapeHtml(u.vence || '—')}</td>
+        <td>${escapeHtml(u.fechaFc || '—')}</td>
+        <td class="serie">${escapeHtml(u.serie || '')}</td>
+        <td>${escapeHtml(u.modelo || '')}</td>
+        <td>${escapeHtml(u.color || '')}</td>
+        <td>${escapeHtml(u.preventa || '')}</td>
+        <td>${escapeHtml(u.fechaVta || '')}</td>
+        <td class="num importe">${fmtMoney(importeMostrar)}</td>
+        <td>${escapeHtml(u.fechaPago || '—')}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const totalCol = filas.reduce((acc, u) => acc + (Number(u.impaga ? u.importe : u.total) || 0), 0);
+
+  return `
+    <div class="table-wrap">
+      <div class="table-head">
+        <h3>Unidades</h3>
+        <span class="count">${filas.length} fila${filas.length === 1 ? '' : 's'} · ordenadas por vencimiento</span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Estado</th>
+              <th>Vence</th>
+              <th>Fecha Fc</th>
+              <th>Serie</th>
+              <th>Modelo</th>
+              <th>Color</th>
+              <th>Preventa</th>
+              <th>Fecha venta</th>
+              <th class="num">Importe</th>
+              <th>Fecha pago</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr>
+              <td colspan="8" style="text-align:right">Total</td>
+              <td class="num">${fmtMoney(totalCol)}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// =======================================================================
+// HELPERS
+// =======================================================================
+function fmtMoney(n) {
+  const num = Number(n) || 0;
+  return '$ ' + Math.round(num).toLocaleString('es-AR');
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Acepta "yyyy-mm-dd" (ISO) o "26-mar" o "26/03/2026"
+function parseFechaCorta(s) {
+  if (!s) return null;
+  s = String(s).trim();
+  // ISO yyyy-mm-dd
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+  // dd/mm/yyyy o dd/mm/yy
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (m) {
+    let y = +m[3]; if (y < 100) y += 2000;
+    return new Date(y, +m[2]-1, +m[1]);
+  }
+  // "26-mar" (sin año) → asumimos año actual; si la fecha ya pasó hace mucho, asumimos año próximo
+  m = s.toLowerCase().match(/^(\d{1,2})-([a-zñ]{3})/);
+  if (m) {
+    const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const mi = meses.indexOf(m[2]);
+    if (mi < 0) return null;
+    const yNow = new Date().getFullYear();
+    return new Date(yNow, mi, +m[1]);
+  }
+  return null;
+}
+
+// =======================================================================
+// INIT
+// =======================================================================
+(function init() {
+  const session = getSharedCookie();
+  if (!session || !session.usuario) {
+    showGate('Necesitás iniciar sesión en el portal.');
+    return;
+  }
+  if (!USUARIOS_PERMITIDOS.includes(session.usuario)) {
+    showGate('Tu usuario no tiene acceso a esta vista.');
+    return;
+  }
+  enterApp(session);
+})();
+</script>
+</body>
+</html>
