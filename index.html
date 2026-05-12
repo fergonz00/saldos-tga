@@ -239,6 +239,42 @@ tfoot td {
 }
 .col-filters .clear-btn:hover { color: var(--red); background: var(--vw-grey-1); }
 
+.selection-bar {
+  background: linear-gradient(135deg, var(--vw-blue) 0%, var(--vw-blue-light) 100%);
+  color: white; border-radius: var(--radius);
+  padding: 14px 18px; margin-bottom: 14px;
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap;
+  box-shadow: var(--shadow);
+}
+.selection-bar .sel-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.selection-bar .sel-lbl {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+  opacity: 0.8; font-weight: 600;
+}
+.selection-bar .sel-val { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+.selection-bar .sel-sub { font-size: 12px; opacity: 0.85; }
+.selection-bar .sel-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.sel-btn {
+  background: rgba(255,255,255,0.18); color: white;
+  padding: 9px 14px; border-radius: 8px;
+  font-size: 13px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 7px;
+  transition: background 0.15s;
+}
+.sel-btn:hover { background: rgba(255,255,255,0.28); }
+.sel-btn.ghost { background: transparent; border: 1px solid rgba(255,255,255,0.4); }
+.sel-btn.ghost:hover { background: rgba(255,255,255,0.12); }
+.sel-btn .cnt-tag {
+  background: white; color: var(--vw-blue);
+  padding: 1px 7px; border-radius: 100px;
+  font-size: 11px; font-weight: 700;
+}
+
+tbody tr.row-selected { background: rgba(0,30,80,0.06); }
+tbody tr.row-selected:hover { background: rgba(0,30,80,0.10); }
+.row-check { width: 16px; height: 16px; cursor: pointer; accent-color: var(--vw-blue); }
+
 .vtos-controls {
   display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
   align-items: center; justify-content: space-between;
@@ -404,9 +440,8 @@ const APPS_SCRIPT_TOKEN = 'tga-saldos-K9Mx2P7vQ';
 let lastCompras = null;
 let filterStatus = 'impagas'; // 'impagas' | 'todas' | 'pagadas'
 let colSearch = '';
-let colModelo = '';
-let colColor = '';
-let colMes = '';
+let colVence = ''; // string ISO yyyy-mm-dd o 'sin'
+let comprasSelected = new Set(); // claves "idx:serie" de filas seleccionadas
 let proxVtoFilter = 'all'; // 'all' | 'novendidas' | 'vendidas'
 let proxVtoSelected = new Set();
 let proxVtoOpen = new Set();
@@ -531,34 +566,39 @@ function renderCompras(data) {
     </div>
   `;
 
-  // Opciones únicas para los selects (sobre todas las unidades).
-  const opciones = (campo) => {
-    const set = new Set();
-    unidades.forEach(u => { const v = String(u[campo] || '').trim(); if (v) set.add(v); });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
-  };
-  const buildSelect = (campo, label, sel) => {
-    const opts = opciones(campo).map(v =>
-      `<option value="${escapeHtml(v)}" ${v === sel ? 'selected' : ''}>${escapeHtml(v)}</option>`
-    ).join('');
-    return `<select onchange="setColFilter('${campo}', this.value)">
-      <option value="">${label} (todos)</option>${opts}
-    </select>`;
-  };
+  // Select de fecha de vencimiento (sólo fechas que aparecen en los datos)
+  const vencesSet = new Map(); // key → {label, date}
+  unidades.forEach(u => {
+    const d = parseFechaCorta(u.vence);
+    const key = d ? fmtDateKey(d) : (u.vence ? '' : 'sin');
+    if (!key) return;
+    if (!vencesSet.has(key)) {
+      vencesSet.set(key, { label: d ? fmtFechaLarga(d) : 'Sin fecha', date: d });
+    }
+  });
+  const vencesArr = Array.from(vencesSet.entries()).sort((a, b) => {
+    if (!a[1].date && !b[1].date) return 0;
+    if (!a[1].date) return 1;
+    if (!b[1].date) return -1;
+    return a[1].date - b[1].date;
+  });
+  const vencesOpts = vencesArr.map(([k, v]) =>
+    `<option value="${escapeHtml(k)}" ${k === colVence ? 'selected' : ''}>${escapeHtml(v.label)}</option>`
+  ).join('');
 
   const colFiltros = `
     <div class="col-filters">
       <input type="search" placeholder="Buscar serie, preventa, modelo..." value="${escapeHtml(colSearch)}" oninput="setColSearch(this.value)">
-      ${buildSelect('modelo', 'Modelo', colModelo)}
-      ${buildSelect('color', 'Color', colColor)}
-      ${buildSelect('mes', 'Mes', colMes)}
-      ${(colSearch || colModelo || colColor || colMes) ? '<button class="clear-btn" onclick="clearColFilters()">✕ Limpiar</button>' : ''}
+      <select onchange="setColVence(this.value)">
+        <option value="">Vence (todas)</option>${vencesOpts}
+      </select>
+      ${(colSearch || colVence) ? '<button class="clear-btn" onclick="clearColFilters()">✕ Limpiar</button>' : ''}
     </div>
   `;
 
   const tableHtml = renderTablaUnidades(unidades);
 
-  wrap.innerHTML = cards + filtros + colFiltros + tableHtml;
+  wrap.innerHTML = cards + filtros + colFiltros + renderSelectionBar() + tableHtml;
 
   // Updated at
   if (data.updatedAt) {
@@ -574,35 +614,67 @@ function setFilterStatus(s) {
 // Filtros de columna (sólo re-renderiza la tabla para no perder foco del input)
 function setColSearch(v) {
   colSearch = v || '';
-  rerenderTabla();
+  rerenderComprasInner();
 }
-function setColFilter(campo, valor) {
-  if (campo === 'modelo') colModelo = valor || '';
-  else if (campo === 'color') colColor = valor || '';
-  else if (campo === 'mes') colMes = valor || '';
-  rerenderTabla();
+function setColVence(v) {
+  colVence = v || '';
+  rerenderComprasInner();
 }
 function clearColFilters() {
-  colSearch = ''; colModelo = ''; colColor = ''; colMes = '';
+  colSearch = ''; colVence = '';
   if (lastCompras) renderCompras(lastCompras);
 }
-function rerenderTabla() {
+
+// Selección de filas
+function toggleComprasSelect(rowKey) {
+  if (comprasSelected.has(rowKey)) comprasSelected.delete(rowKey);
+  else comprasSelected.add(rowKey);
+  rerenderComprasInner();
+}
+function clearComprasSelection() {
+  comprasSelected.clear();
+  rerenderComprasInner();
+}
+function seleccionarVendidasVisibles() {
+  const filas = getFilasVisibles().filter(u => u.impaga && esVendida(u));
+  const yaTodasTildadas = filas.length > 0 && filas.every(u => comprasSelected.has(filaKey(u)));
+  if (yaTodasTildadas) {
+    // Toggle: si ya están todas, las deselecciona
+    filas.forEach(u => comprasSelected.delete(filaKey(u)));
+  } else {
+    filas.forEach(u => comprasSelected.add(filaKey(u)));
+  }
+  rerenderComprasInner();
+}
+
+function rerenderComprasInner() {
   if (!lastCompras) return;
   const wrap = document.getElementById('comprasContent');
-  // Reemplaza sólo el .table-wrap dejando intactos los cards/filtros
-  const existing = wrap.querySelector('.table-wrap');
-  const empty = wrap.querySelector('.empty');
-  const nuevo = renderTablaUnidades(lastCompras.unidades || []);
-  const tmp = document.createElement('div');
-  tmp.innerHTML = nuevo;
-  const target = existing || empty;
-  if (target && tmp.firstElementChild) {
-    target.replaceWith(tmp.firstElementChild);
+  // Reemplazar tabla y barra de selección sin tocar cards/filtros (para no perder foco del input)
+  const tableWrap = wrap.querySelector('.table-wrap');
+  const emptyTbl = wrap.querySelector('.table-wrap + .empty, .col-filters ~ .empty:not(.cards .empty)');
+  const selBar = wrap.querySelector('.selection-bar');
+
+  const nuevoSel = renderSelectionBar();
+  const nuevaTabla = renderTablaUnidades(lastCompras.unidades || []);
+
+  if (selBar) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = nuevoSel;
+    if (tmp.firstElementChild) selBar.replaceWith(tmp.firstElementChild);
+  }
+  const targetTable = tableWrap || emptyTbl;
+  if (targetTable) {
+    const tmp2 = document.createElement('div');
+    tmp2.innerHTML = nuevaTabla;
+    if (tmp2.firstElementChild) targetTable.replaceWith(tmp2.firstElementChild);
   } else {
     renderCompras(lastCompras);
+    return;
   }
+
   // Mostrar/ocultar el botón limpiar
-  const wantClear = !!(colSearch || colModelo || colColor || colMes);
+  const wantClear = !!(colSearch || colVence);
   const cf = wrap.querySelector('.col-filters');
   if (cf) {
     let btn = cf.querySelector('.clear-btn');
@@ -624,10 +696,14 @@ function renderTablaUnidades(unidades) {
   else if (filterStatus === 'pagadas') filas = unidades.filter(u => !u.impaga && u.fechaPago);
   else filas = unidades.slice();
 
-  // Filtros por columna
-  if (colModelo) filas = filas.filter(u => String(u.modelo || '').trim() === colModelo);
-  if (colColor)  filas = filas.filter(u => String(u.color  || '').trim() === colColor);
-  if (colMes)    filas = filas.filter(u => String(u.mes    || '').trim() === colMes);
+  // Filtro por fecha de vencimiento
+  if (colVence) {
+    filas = filas.filter(u => {
+      const d = parseFechaCorta(u.vence);
+      const key = d ? fmtDateKey(d) : (u.vence ? '' : 'sin');
+      return key === colVence;
+    });
+  }
   if (colSearch) {
     const q = colSearch.trim().toLowerCase();
     filas = filas.filter(u => {
@@ -663,8 +739,14 @@ function renderTablaUnidades(unidades) {
       pill = '<span class="pill pagada">Pagada</span>';
     }
     const importeMostrar = u.impaga ? u.importe : u.total;
+    const rowKey = filaKey(u);
+    const checked = comprasSelected.has(rowKey);
+    const checkbox = u.impaga
+      ? `<input type="checkbox" class="row-check" ${checked ? 'checked' : ''} onchange="toggleComprasSelect('${escapeHtml(rowKey)}')">`
+      : '';
     return `
-      <tr>
+      <tr class="${checked ? 'row-selected' : ''}">
+        <td>${checkbox}</td>
         <td>${pill}</td>
         <td class="vence">${escapeHtml(u.vence || '—')}</td>
         <td>${escapeHtml(u.fechaFc || '—')}</td>
@@ -691,6 +773,7 @@ function renderTablaUnidades(unidades) {
         <table>
           <thead>
             <tr>
+              <th style="width:32px"></th>
               <th>Estado</th>
               <th>Vence</th>
               <th>Fecha Fc</th>
@@ -706,12 +789,72 @@ function renderTablaUnidades(unidades) {
           <tbody>${rows}</tbody>
           <tfoot>
             <tr>
-              <td colspan="8" style="text-align:right">Total</td>
+              <td colspan="9" style="text-align:right">Total visible</td>
               <td class="num">${fmtMoney(totalCol)}</td>
               <td></td>
             </tr>
           </tfoot>
         </table>
+      </div>
+    </div>
+  `;
+}
+
+function filaKey(u) {
+  // Identifica una fila aunque cambie de orden
+  return String(u.idx || '') + ':' + String(u.serie || '') + ':' + String(u.preventa || '');
+}
+
+function getFilasVisibles() {
+  if (!lastCompras) return [];
+  const unidades = Array.isArray(lastCompras.unidades) ? lastCompras.unidades : [];
+  let filas;
+  if (filterStatus === 'impagas') filas = unidades.filter(u => u.impaga);
+  else if (filterStatus === 'pagadas') filas = unidades.filter(u => !u.impaga && u.fechaPago);
+  else filas = unidades.slice();
+  if (colVence) {
+    filas = filas.filter(u => {
+      const d = parseFechaCorta(u.vence);
+      const key = d ? fmtDateKey(d) : (u.vence ? '' : 'sin');
+      return key === colVence;
+    });
+  }
+  if (colSearch) {
+    const q = colSearch.trim().toLowerCase();
+    filas = filas.filter(u => {
+      const blob = [u.serie, u.preventa, u.modelo, u.color, u.mes, u.fc, u.fechaVta, u.vence, u.localidad]
+        .map(x => String(x || '').toLowerCase()).join(' ');
+      return blob.indexOf(q) > -1;
+    });
+  }
+  return filas;
+}
+
+function renderSelectionBar() {
+  if (!lastCompras) return '';
+  const unidades = lastCompras.unidades || [];
+  const map = new Map(unidades.map(u => [filaKey(u), u]));
+  const seleccionadas = Array.from(comprasSelected).map(k => map.get(k)).filter(Boolean);
+  const total = seleccionadas.reduce((acc, u) => acc + (Number(u.importe) || 0), 0);
+  const cnt = seleccionadas.length;
+  const filasVisibles = getFilasVisibles();
+  const vendidasImpagasVisibles = filasVisibles.filter(u => u.impaga && esVendida(u));
+  const yaTodasVendidasTildadas = vendidasImpagasVisibles.length > 0
+    && vendidasImpagasVisibles.every(u => comprasSelected.has(filaKey(u)));
+
+  return `
+    <div class="selection-bar">
+      <div class="sel-info">
+        <div class="sel-lbl">${cnt ? 'Deuda seleccionada' : 'Tildá filas para sumar deuda'}</div>
+        ${cnt ? `<div class="sel-val">${fmtMoney(total)}</div>` : ''}
+        ${cnt ? `<div class="sel-sub">${cnt} unidad${cnt === 1 ? '' : 'es'} tildada${cnt === 1 ? '' : 's'}</div>` : ''}
+      </div>
+      <div class="sel-actions">
+        <button class="sel-btn" onclick="seleccionarVendidasVisibles()">
+          ${yaTodasVendidasTildadas ? '✓ Vendidas tildadas' : '+ Seleccionar vendidas'}
+          ${vendidasImpagasVisibles.length ? `<span class="cnt-tag">${vendidasImpagasVisibles.length}</span>` : ''}
+        </button>
+        ${cnt ? '<button class="sel-btn ghost" onclick="clearComprasSelection()">Limpiar</button>' : ''}
       </div>
     </div>
   `;
