@@ -568,6 +568,10 @@ function parseFechaCorta(s) {
     showGate('Necesitás iniciar sesión en el portal.');
     return;
   }
+  if (session._impersonatedBy) {
+    showGate('Esta vista no permite sesiones impersonadas.');
+    return;
+  }
   if (!USUARIOS_PERMITIDOS.includes(session.usuario)) {
     showGate('Tu usuario no tiene acceso a esta vista.');
     return;
