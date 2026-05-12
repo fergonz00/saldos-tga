@@ -1265,23 +1265,46 @@ function renderBancos() {
   wrap.innerHTML = dispCard + seccionesHtml + fondosHtml;
 }
 
+// Limpia cualquier resto de fórmula rota de Sheets (#VALUE!, #¡DIV/0!, #N/A, etc.) → "-"
+function limpioStr(s) {
+  const v = String(s == null ? '' : s).trim();
+  if (!v) return '—';
+  if (/^#/.test(v)) return '—';
+  return v;
+}
+
 function renderSeccionFondos(fondos) {
   if (!fondos.length) return '';
-  const filas = fondos.map(f => {
-    const totalShow    = f.total !== 0 ? fmtMoney(f.total) : (f.totalStr || '—');
-    const gananciaShow = f.ganancia !== 0 ? fmtMoney(f.ganancia) : (f.gananciaStr || '—');
-    const isFila0      = String(f.fecha || '').trim() === '0';   // fila de totales = "0"
-    const fechaShow    = isFila0 ? 'Total' : (f.fecha || '—');
-    const trClass      = isFila0 ? 'total-row' : '';
-    return `<tr class="${trClass}">
-      <td>${escapeHtml(fechaShow)}</td>
+  // La planilla a veces incluye una fila de totales con fecha "0" — la separo del cálculo
+  // porque ya viene calculada (y con #VALUE). Suma propia abajo.
+  const filasReales = fondos.filter(f => String(f.fecha || '').trim() !== '0');
+  let sumaGanancia = 0;
+  filasReales.forEach(f => {
+    const v = Number(f.ganancia);
+    if (!isNaN(v) && isFinite(v)) sumaGanancia += v;
+  });
+
+  const filas = filasReales.map(f => {
+    const totalShow    = f.total !== 0 ? fmtMoney(f.total)    : limpioStr(f.totalStr);
+    const gananciaShow = (f.ganancia && !isNaN(f.ganancia)) ? fmtMoney(f.ganancia) : limpioStr(f.gananciaStr);
+    return `<tr>
+      <td>${escapeHtml(f.fecha || '—')}</td>
       <td class="num importe">${totalShow}</td>
       <td class="num importe">${gananciaShow}</td>
-      <td class="num">${escapeHtml(f.diario || '—')}</td>
-      <td class="num">${escapeHtml(f.anual || '—')}</td>
-      <td class="num">${escapeHtml(f.mensual || '—')}</td>
+      <td class="num">${escapeHtml(limpioStr(f.diario))}</td>
+      <td class="num">${escapeHtml(limpioStr(f.anual))}</td>
+      <td class="num">${escapeHtml(limpioStr(f.mensual))}</td>
     </tr>`;
   }).join('');
+
+  const filaTotal = `<tr class="total-row">
+    <td>Total día</td>
+    <td class="num importe">—</td>
+    <td class="num importe">${fmtMoney(sumaGanancia)}</td>
+    <td class="num">—</td>
+    <td class="num">—</td>
+    <td class="num">—</td>
+  </tr>`;
 
   return `
     <div class="bank-section">
@@ -1298,7 +1321,7 @@ function renderSeccionFondos(fondos) {
               <th class="num">Mensual %</th>
             </tr>
           </thead>
-          <tbody>${filas}</tbody>
+          <tbody>${filas}${filaTotal}</tbody>
         </table>
       </div>
     </div>
