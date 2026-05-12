@@ -306,6 +306,25 @@ td.num.neg, td.importe.neg { color: var(--red); }
 .bank-section table tbody tr:first-child td { border-top: none; }
 .bank-section table tbody td:first-child { padding-left: 18px; }
 .bank-section table tbody td:last-child  { padding-right: 18px; }
+.bank-section thead th { padding-left: 18px; padding-right: 18px; }
+
+.venc-chip {
+  display: inline-block; margin-left: 8px;
+  font-size: 10px; font-weight: 600;
+  padding: 2px 8px; border-radius: 100px;
+  background: var(--vw-grey-1); color: var(--vw-grey-4);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.sub-desc {
+  display: inline-block; margin-left: 8px;
+  font-size: 11px; color: var(--vw-grey-4); font-style: italic;
+}
+.personal-item .p-date {
+  font-size: 12px; color: var(--vw-grey-3);
+  margin-left: 12px; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.personal-item { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 
 .personal-wrap {
   background: white; border-radius: var(--radius);
@@ -1212,14 +1231,18 @@ function renderBancos() {
   let actual = null;
   rows.forEach(r => {
     if (r.tipo === 'header') {
-      actual = { titulo: r.concepto || '', valorHeader: Number(r.valor) || 0, items: [] };
+      actual = {
+        titulo: r.concepto || '',
+        valorHeaderD: Number(r.d) || 0,
+        valorHeaderE: Number(r.e) || 0,
+        items: [],
+      };
       secciones.push(actual);
     } else if (r.tipo === 'sep') {
-      // Si todavía no hay sección, ignoramos. Si hay, marcamos próximo bloque.
       if (actual && actual.items.length) actual.items.push({ tipo: 'sep' });
     } else {
       if (!actual) {
-        actual = { titulo: '', valorHeader: 0, items: [] };
+        actual = { titulo: '', valorHeaderD: 0, valorHeaderE: 0, items: [] };
         secciones.push(actual);
       }
       actual.items.push(r);
@@ -1242,33 +1265,95 @@ function renderBancos() {
 }
 
 function renderSeccionBanco(sec) {
-  const headerValor = sec.valorHeader ? `<span class="sec-amount">${fmtMoney(sec.valorHeader)}</span>` : '';
+  const tituloUpper = (sec.titulo || '').toUpperCase();
+  // DISP FUTURAS: dos columnas de valor — "Libre Disp" y "Técnico" definidas en el header
+  const esDispFuturas = /\bDISP\s+FUTURAS\b/.test(tituloUpper);
+  // SALDOS DISPONIBLES VW: la columna E lleva la sub-descripción (Deposito VWF, Certif AA, etc.)
+  const esSaldosVW = /SALDOS\s+DISPONIBLES\s+VW/.test(tituloUpper);
+  // DEUDAS EN FABRICA: los montos están en E
+  const esDeudasFabrica = /DEUDAS\s+EN\s+FABRICA/.test(tituloUpper);
+
+  const headerAmount = (Number(sec.valorHeaderD) || Number(sec.valorHeaderE) || 0);
+  const headerStr = headerAmount ? `<span class="sec-amount">${fmtMoney(headerAmount)}</span>` : '';
   const titulo = sec.titulo
-    ? `<div class="sec-head"><h3>${escapeHtml(sec.titulo)}</h3>${headerValor}</div>`
+    ? `<div class="sec-head"><h3>${escapeHtml(sec.titulo)}</h3>${headerStr}</div>`
     : '';
 
-  // Si la sección no tiene items, mostramos solo el header.
   if (!sec.items.length) {
     if (!titulo) return '';
     return `<div class="bank-section">${titulo}</div>`;
   }
 
+  // Sub-encabezados de columnas para DISP FUTURAS
+  let thead = '';
+  if (esDispFuturas) {
+    thead = `<thead><tr>
+      <th>Concepto</th>
+      <th class="num">Libre Disp</th>
+      <th class="num">Técnico</th>
+    </tr></thead>`;
+  }
+
   const filasHtml = sec.items.map(r => {
-    if (r.tipo === 'sep') return '<tr class="sep-row"><td colspan="2"></td></tr>';
+    if (r.tipo === 'sep') {
+      const cols = esDispFuturas ? 3 : 2;
+      return `<tr class="sep-row"><td colspan="${cols}"></td></tr>`;
+    }
     const concepto = String(r.concepto || '').trim();
-    const valorNum = Number(r.valor) || 0;
-    const valorTxt = String(r.valorMostrar || '').trim();
-    const negativo = valorNum < 0 || /^-/.test(valorTxt);
-    const valShow = valorNum !== 0 ? fmtMoney(valorNum) : (valorTxt || '—');
-    if (r.tipo === 'total') {
-      return `<tr class="total-row ${negativo ? 'neg' : ''}">
+    const dNum = Number(r.d) || 0;
+    const eNum = Number(r.e) || 0;
+    const dStr = String(r.dStr || '').trim();
+    const eStr = String(r.eStr || '').trim();
+    const esFechaE = !!r.esFechaE;
+
+    if (esDispFuturas) {
+      const negD = dNum < 0;
+      const negE = eNum < 0;
+      const dShow = dNum !== 0 ? fmtMoney(dNum) : (dStr || '—');
+      const eShow = eNum !== 0 ? fmtMoney(eNum) : (eStr || '—');
+      const rowClass = r.tipo === 'total' ? 'total-row' : '';
+      return `<tr class="${rowClass}">
         <td>${escapeHtml(concepto)}</td>
-        <td class="num importe">${valShow}</td>
+        <td class="num importe ${negD ? 'neg' : ''}">${dShow}</td>
+        <td class="num importe ${negE ? 'neg' : ''}">${eShow}</td>
       </tr>`;
     }
-    return `<tr>
-      <td>${escapeHtml(concepto)}</td>
-      <td class="num importe ${negativo ? 'neg' : ''}">${valShow}</td>
+
+    // Resto de secciones: una sola columna de valor.
+    // Reglas:
+    //   - Si D tiene valor numérico → ese es el valor
+    //   - Si D es 0 / vacío y E tiene valor numérico → uso E
+    //   - Si E es una fecha → la muestro como chip al lado del concepto
+    //   - Si E es texto descriptivo (ej "Deposito VWF" en SALDOS VW) → lo muestro como subtítulo
+    let valorPrincipal = '';
+    let valorNegativo = false;
+    let conceptoExtra = '';
+
+    if (dNum !== 0) {
+      valorPrincipal = fmtMoney(dNum);
+      valorNegativo = dNum < 0;
+    } else if (eNum !== 0) {
+      valorPrincipal = fmtMoney(eNum);
+      valorNegativo = eNum < 0;
+    } else if (dStr) {
+      valorPrincipal = escapeHtml(dStr);
+      valorNegativo = /^-/.test(dStr);
+    } else {
+      valorPrincipal = '—';
+    }
+
+    if (esFechaE && eStr) {
+      conceptoExtra = `<span class="venc-chip">venc. ${escapeHtml(eStr)}</span>`;
+    } else if (eStr && eNum === 0 && !esFechaE && (esSaldosVW || /vw\s+credit/i.test(concepto))) {
+      // En SALDOS VW, col E es la sub-descripción (Deposito VWF, Certif AA, etc.)
+      conceptoExtra = `<span class="sub-desc">${escapeHtml(eStr)}</span>`;
+    }
+
+    const rowClass = r.tipo === 'total' ? 'total-row' : '';
+    const negClass = valorNegativo ? 'neg' : '';
+    return `<tr class="${rowClass} ${valorNegativo ? 'neg' : ''}">
+      <td>${escapeHtml(concepto)}${conceptoExtra}</td>
+      <td class="num importe ${negClass}">${valorPrincipal}</td>
     </tr>`;
   }).join('');
 
@@ -1276,9 +1361,7 @@ function renderSeccionBanco(sec) {
     <div class="bank-section">
       ${titulo}
       <div class="table-scroll">
-        <table>
-          <tbody>${filasHtml}</tbody>
-        </table>
+        <table>${thead}<tbody>${filasHtml}</tbody></table>
       </div>
     </div>
   `;
@@ -1303,10 +1386,14 @@ function renderPersonal() {
 
   const html = items.map(r => {
     const t = String(r.texto || '').trim();
+    const f = String(r.fecha || '').trim();
     if (r.tipo === 'header')   return `<div class="personal-header-main">${escapeHtml(t)}</div>`;
     if (r.tipo === 'subhead')  return `<div class="personal-subhead">${escapeHtml(t)}</div>`;
     if (r.tipo === 'sep')      return '<div class="personal-sep"></div>';
-    return `<div class="personal-item">${escapeHtml(t)}</div>`;
+    return `<div class="personal-item">
+      <span class="p-txt">${escapeHtml(t)}</span>
+      ${f ? `<span class="p-date">${escapeHtml(f)}</span>` : ''}
+    </div>`;
   }).join('');
 
   wrap.innerHTML = `<div class="personal-wrap"><div class="personal-body">${html}</div></div>`;
