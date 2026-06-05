@@ -2464,26 +2464,38 @@ function clasificarTipoNovedad(seccion) {
   return 'otro';
 }
 
-async function snapshotNovedadesGenerales(personal) {
-  if (!Array.isArray(personal) || !personal.length) return;
+// Parsea la lista `personal` (del Apps Script) en eventos {fecha, tipo, persona, detalle}
+function parseNovedadesPersonal(personal) {
+  const out = [];
+  if (!Array.isArray(personal)) return out;
   let seccion = '';
-  const eventos = [];
   personal.forEach(r => {
     if (r.tipo === 'header')  { seccion = ''; return; }
     if (r.tipo === 'subhead') { seccion = String(r.texto || '').trim(); return; }
     if (r.tipo !== 'item') return;
     const texto = String(r.texto || '').trim();
     if (!texto) return;
-    const tipo = clasificarTipoNovedad(seccion);
     const d = parseFechaCorta(r.fecha);
-    const fechaISO = d ? fmtDateKey(d) : hoyISO();
-    const dedup = [fechaISO, 'general', tipo, texto.toLowerCase()].join('|');
-    eventos.push({
-      fecha: fechaISO, area: 'general', tipo, persona: texto,
-      detalle: String(r.fecha || '').trim() || null, origen: 'sheet', dedup_key: dedup,
+    out.push({
+      fecha: d ? fmtDateKey(d) : hoyISO(),
+      tipo: clasificarTipoNovedad(seccion),
+      persona: texto,
+      detalle: String(r.fecha || '').trim(),
     });
   });
-  if (!eventos.length) return;
+  return out;
+}
+
+// Respaldo opcional: acumula en Supabase lo que trae el Sheet (dedup). No requiere
+// tocar nada en Sheets; corre solo al abrir la app. Los reportes igual funcionan en vivo.
+async function snapshotNovedadesGenerales(personal) {
+  const parsed = parseNovedadesPersonal(personal);
+  if (!parsed.length) return;
+  const eventos = parsed.map(e => ({
+    fecha: e.fecha, area: 'general', tipo: e.tipo, persona: e.persona,
+    detalle: e.detalle || null, origen: 'sheet',
+    dedup_key: [e.fecha, 'general', e.tipo, e.persona.toLowerCase()].join('|'),
+  }));
   try {
     await sbFetch('saldos_novedades?on_conflict=dedup_key', {
       method: 'POST',
@@ -2505,9 +2517,11 @@ async function renderReportes() {
   const wrap = document.getElementById('reportesContent');
   if (!wrap) return;
   wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando reportes...</div></div>';
-  // Ventas: necesitamos las guardias cargadas
+  // Ventas: las guardias cargadas (lo que la app sumó de los vendedores)
   if (!guardiasLoaded && !guardiasSinTabla) { try { await loadGuardiasOverrides(); } catch (e) {} }
-  // General: acumulado del Sheet
+  // General en vivo: lo que trae el Apps Script
+  if (!lastInforme) { try { await loadInforme(); } catch (e) {} }
+  // General acumulado (respaldo histórico, por si el Sheet se pisa)
   try {
     reportesGeneral = await sbFetch('saldos_novedades?select=fecha,area,tipo,persona,detalle,origen&order=fecha.desc');
   } catch (e) { console.error('reportes general:', e); reportesGeneral = []; }
@@ -2516,6 +2530,7 @@ async function renderReportes() {
 
 function reportesEventos() {
   const evs = [];
+  // VENTAS: lo que la app sumó de los vendedores (guardias)
   if (guardiasOverrides) {
     guardiasOverrides.forEach((info, key) => {
       const parts = key.split('|');
@@ -2528,10 +2543,17 @@ function reportesEventos() {
       }
     });
   }
-  (reportesGeneral || []).forEach(r => {
-    if (r.tipo !== 'falta' && r.tipo !== 'llegada_tarde') return;
-    evs.push({ fecha: r.fecha, persona: String(r.persona || '').trim(), area: r.area || 'general', tipo: r.tipo, detalle: r.detalle || '', extra: '' });
-  });
+  // GENERAL: en vivo del Apps Script (lastInforme) + acumulado en Supabase, deduplicado
+  const genMap = new Map();
+  const addGen = (fecha, tipo, persona, detalle) => {
+    if (tipo !== 'falta' && tipo !== 'llegada_tarde') return;
+    if (!fecha || !persona) return;
+    const k = [fecha, tipo, String(persona).toLowerCase(), String(detalle || '').toLowerCase()].join('|');
+    if (!genMap.has(k)) genMap.set(k, { fecha, persona: String(persona).trim(), area: 'general', tipo, detalle: detalle || '', extra: '' });
+  };
+  parseNovedadesPersonal(lastInforme && lastInforme.personal).forEach(e => addGen(e.fecha, e.tipo, e.persona, e.detalle));
+  (reportesGeneral || []).forEach(r => addGen(r.fecha, r.tipo, r.persona, r.detalle));
+  genMap.forEach(v => evs.push(v));
   return evs;
 }
 
