@@ -567,6 +567,58 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .g-pop .g-pop-opt .dot { width: 12px; height: 12px; border-radius: 3px; }
 .g-pop .g-pop-opt.current { outline: 2px solid var(--vw-blue); outline-offset: -2px; }
 
+/* ===== Calendario / agenda de guardias ===== */
+.gcal-month {
+  background: white; border-radius: var(--radius);
+  box-shadow: var(--shadow); overflow: hidden; margin-bottom: 16px;
+}
+.gcal-month-head {
+  padding: 12px 18px; background: var(--vw-blue); color: white;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.gcal-scroll { overflow-x: auto; }
+.gcal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 720px; }
+.gcal-dow {
+  text-align: center; padding: 8px 4px; font-size: 12px; font-weight: 700;
+  color: var(--vw-grey-4); background: var(--vw-grey-1); text-transform: uppercase;
+  border-bottom: 1px solid var(--vw-grey-2); border-right: 1px solid var(--vw-grey-2);
+}
+.gcal-dow.we { color: var(--vw-grey-3); }
+.gcal-cell {
+  min-height: 120px; padding: 6px 6px 9px;
+  border-right: 1px solid var(--vw-grey-2); border-bottom: 1px solid var(--vw-grey-2);
+  overflow: hidden;
+}
+.gcal-cell.empty { background: var(--vw-grey-1); min-height: 0; }
+.gcal-cell.we { background: #FAFAFA; }
+.gcal-cell.hoy { background: #E0F2FE; box-shadow: inset 0 0 0 2px #38BDF8; }
+.gcal-daynum {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 14px; font-weight: 700; color: var(--vw-blue); margin-bottom: 5px;
+}
+.gcal-cell.we .gcal-daynum { color: var(--vw-grey-4); }
+.gcal-hoy-badge {
+  font-size: 9px; background: #0EA5E9; color: white;
+  padding: 1px 7px; border-radius: 100px; font-weight: 700; letter-spacing: 0.5px;
+}
+.gcal-suc { margin-bottom: 5px; }
+.gcal-suc-lbl {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.3px; color: var(--vw-grey-3); margin-bottom: 2px;
+}
+.gcal-names { display: flex; flex-wrap: wrap; gap: 3px; }
+.gname {
+  font-size: 10px; padding: 2px 6px; border-radius: 5px;
+  font-weight: 600; white-space: nowrap;
+}
+.gname.editable { cursor: pointer; }
+.gname.editable:hover { filter: brightness(0.93); }
+.gname.trabaja    { background: var(--green-soft);  color: #065F46; }
+.gname.franco     { background: var(--vw-grey-1);   color: var(--vw-grey-3); text-decoration: line-through; }
+.gname.vacaciones { background: #DBEAFE;            color: #1E40AF; }
+.gname.curso      { background: var(--orange-soft); color: #92400E; }
+.gname.falta      { background: var(--red-soft);    color: #991B1B; }
+
 .guardias-ausentes {
   background: white; border-radius: var(--radius);
   box-shadow: var(--shadow); overflow: hidden; margin-bottom: 16px;
@@ -744,6 +796,7 @@ const GUARDIAS_BASE_RAW = [
 let guardiasBaseMap = null;          // fecha → { 'Entre Ríos': {VEND:estado}, ... }
 let guardiasOverrides = new Map();   // 'fecha|sucursal|vendedor' → estado
 let guardiasMesFiltro = '';          // '' = todos, o 'YYYY-MM'
+let guardiasMesInit = false;         // ya se fijó el mes inicial (el actual)
 let guardiasLoaded = false;          // overrides ya traídos de Supabase
 let guardiasSinTabla = false;        // la tabla saldos_guardias todavía no existe
 let guardiasEditCell = null;         // celda con el selector abierto
@@ -2002,8 +2055,15 @@ function drawGuardias() {
   const editable = puedeEditarGuardias() && !guardiasSinTabla;
   const fechas = guardiasFechas();
   const meses = Array.from(new Set(fechas.map(f => f.slice(0, 7)))).sort();
+  // Arrancar enfocado en el mes actual (si está en los datos)
+  if (!guardiasMesInit) {
+    guardiasMesInit = true;
+    const hm = hoyISO().slice(0, 7);
+    if (meses.includes(hm)) guardiasMesFiltro = hm;
+  }
   if (guardiasMesFiltro && !meses.includes(guardiasMesFiltro)) guardiasMesFiltro = '';
   const fechasVis = guardiasMesFiltro ? fechas.filter(f => f.slice(0, 7) === guardiasMesFiltro) : fechas;
+  const mesesARender = guardiasMesFiltro ? [guardiasMesFiltro] : meses;
 
   const mesOpts = ['<option value="">Todos los meses</option>']
     .concat(meses.map(m => `<option value="${m}" ${m === guardiasMesFiltro ? 'selected' : ''}>${escapeHtml(mesLabel(m))}</option>`))
@@ -2012,7 +2072,7 @@ function drawGuardias() {
   const legend = Object.entries(GUARDIAS_ESTADOS).map(([est, v]) =>
     `<span class="lg"><span class="dot ${est}"></span>${escapeHtml(v.label)}</span>`).join('');
 
-  const bloques = GUARDIAS_SUCURSALES.map(suc => renderGuardiaSucursal(suc, fechasVis, editable)).join('');
+  const bloques = mesesARender.map(ym => renderGuardiaCalendario(ym, editable)).join('');
   const ausencias = renderGuardiaAusencias(fechasVis);
 
   const bannerSinTabla = guardiasSinTabla ? `
@@ -2025,8 +2085,8 @@ function drawGuardias() {
     ${bannerSinTabla}
     <div class="guardias-bar">
       <div>
-        <div class="g-title">Cronograma de guardias · Ventas</div>
-        <div class="g-sub">${editable ? 'Tocá una celda para cambiar el estado. Se guarda solo.' : 'Vista de sólo lectura.'}</div>
+        <div class="g-title">Agenda de guardias · Ventas</div>
+        <div class="g-sub">El día de hoy va resaltado en celeste. ${editable ? 'Tocá un nombre para cambiar su estado (se guarda solo).' : 'Vista de sólo lectura.'}</div>
       </div>
       <select onchange="setGuardiasMes(this.value)">${mesOpts}</select>
     </div>
@@ -2037,34 +2097,53 @@ function drawGuardias() {
   `;
 }
 
-function renderGuardiaSucursal(suc, fechas, editable) {
-  const ths = suc.vendedores.map(v => `<th>${escapeHtml(cap(v))}</th>`).join('');
-  const rows = fechas.map(f => {
-    const dw = dowNum(f);
-    const weekend = (dw === 0 || dw === 6);
-    const cells = suc.vendedores.map(v => {
-      const est = guardiaEstado(f, suc.nombre, v);
-      const meta = GUARDIAS_ESTADOS[est] || GUARDIAS_ESTADOS.franco;
-      const cls = 'g-chip ' + est + (editable ? ' editable' : '');
-      const oc = editable ? `onclick="abrirGuardiaPop(event,'${f}','${escapeHtml(suc.nombre)}','${v}')"` : '';
-      return `<td class="g-cell"><span class="${cls}" ${oc}>${escapeHtml(meta.ab)}</span></td>`;
-    }).join('');
-    return `<tr class="${weekend ? 'g-weekend' : ''}">
-      <td class="g-day"><span class="g-dow">${dowName(f)}</span>${fechaDM(f)}</td>
-      ${cells}
-    </tr>`;
-  }).join('');
+// Un mes como calendario (semana D L M M J V S)
+function renderGuardiaCalendario(ym, editable) {
+  const p = ym.split('-').map(Number);
+  const y = p[0], m = p[1];
+  const diasEnMes = new Date(y, m, 0).getDate();
+  const primerDow = new Date(y, m - 1, 1).getDay(); // 0=Dom
+  const dows = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+  const dowNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const header = dows.map((d, i) =>
+    `<div class="gcal-dow ${(i === 0 || i === 6) ? 'we' : ''}" title="${dowNombres[i]}">${d}</div>`).join('');
+  let cells = '';
+  for (let i = 0; i < primerDow; i++) cells += '<div class="gcal-cell empty"></div>';
+  for (let d = 1; d <= diasEnMes; d++) {
+    cells += renderGuardiaDiaCell(ym + '-' + String(d).padStart(2, '0'), d, editable);
+  }
+  const resto = (7 - ((primerDow + diasEnMes) % 7)) % 7;
+  for (let i = 0; i < resto; i++) cells += '<div class="gcal-cell empty"></div>';
   return `
-    <div class="gsuc-block">
-      <div class="gsuc-head">${escapeHtml(suc.nombre)}</div>
-      <div class="gtable-scroll">
-        <table class="gtable">
-          <thead><tr><th style="text-align:left">Día</th>${ths}</tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
+    <div class="gcal-month">
+      <div class="gcal-month-head">${escapeHtml(mesLabel(ym))}</div>
+      <div class="gcal-scroll"><div class="gcal-grid">${header}${cells}</div></div>
     </div>
   `;
+}
+
+// Una celda-día: por cada salón, los nombres coloreados (verde=va, gris=franco, etc.)
+function renderGuardiaDiaCell(fecha, dia, editable) {
+  const dw = dowNum(fecha);
+  const weekend = (dw === 0 || dw === 6);
+  const esHoy = (fecha === hoyISO());
+  const sucBlocks = GUARDIAS_SUCURSALES.map(suc => {
+    const chips = suc.vendedores.map(v => {
+      const est = guardiaEstado(fecha, suc.nombre, v);
+      const meta = GUARDIAS_ESTADOS[est] || GUARDIAS_ESTADOS.franco;
+      const cls = 'gname ' + est + (editable ? ' editable' : '');
+      const oc = editable ? `onclick="abrirGuardiaPop(event,'${fecha}','${escapeHtml(suc.nombre)}','${v}')"` : '';
+      return `<span class="${cls}" ${oc} title="${escapeHtml(cap(v) + ' · ' + meta.label)}">${escapeHtml(cap(v))}</span>`;
+    }).join('');
+    return `<div class="gcal-suc">
+      <div class="gcal-suc-lbl">${escapeHtml(suc.nombre)}</div>
+      <div class="gcal-names">${chips}</div>
+    </div>`;
+  }).join('');
+  return `<div class="gcal-cell ${weekend ? 'we' : ''} ${esHoy ? 'hoy' : ''}">
+    <div class="gcal-daynum"><span>${dia}</span>${esHoy ? '<span class="gcal-hoy-badge">HOY</span>' : ''}</div>
+    ${sucBlocks}
+  </div>`;
 }
 
 function renderGuardiaAusencias(fechas) {
@@ -2174,6 +2253,10 @@ function mesLabel(ym) {
   return meses[p[1] - 1] + ' ' + p[0];
 }
 function diasConsecutivos(a, b) { return (_gd(b) - _gd(a)) === 86400000; }
+function hoyISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
 
 function fmtDateKey(d) {
   const y = d.getFullYear();
