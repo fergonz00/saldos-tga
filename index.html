@@ -567,6 +567,44 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .g-pop .g-pop-opt .dot { width: 12px; height: 12px; border-radius: 3px; }
 .g-pop .g-pop-opt.current { outline: 2px solid var(--vw-blue); outline-offset: -2px; }
 
+/* Popover-formulario (estado + motivo + llegada tarde) */
+.g-pop.g-pop-wide { min-width: 240px; max-width: 280px; padding: 12px; max-height: 80vh; overflow-y: auto; }
+.g-pop-head { font-size: 14px; font-weight: 700; color: var(--vw-blue); margin-bottom: 8px; }
+.g-pop-head .g-pop-sub { font-size: 11px; font-weight: 500; color: var(--vw-grey-4); text-transform: capitalize; }
+.g-pop-sec { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--vw-grey-3); margin: 10px 0 5px; }
+.g-estados { display: flex; flex-direction: column; gap: 3px; }
+.g-est { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 7px; background: var(--vw-grey-1); font-size: 13px; font-weight: 600; color: var(--vw-black); text-align: left; }
+.g-est:hover { background: var(--vw-grey-2); }
+.g-est.sel { outline: 2px solid var(--vw-blue); outline-offset: -2px; background: white; }
+.g-est .dot { width: 12px; height: 12px; border-radius: 3px; }
+.g-motivo-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.g-motivo-chip { font-size: 11px; padding: 4px 9px; border-radius: 100px; background: var(--vw-grey-1); color: var(--vw-grey-4); font-weight: 600; border: 1px solid var(--vw-grey-2); }
+.g-motivo-chip:hover { background: var(--vw-grey-2); }
+.g-motivo-chip.sel { background: var(--red-soft); color: #991B1B; border-color: #FCA5A5; }
+.g-pop-input { width: 100%; font-family: var(--font); font-size: 13px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--vw-grey-2); outline: none; }
+.g-pop-input:focus { border-color: var(--vw-blue); }
+.g-tarde-row { display: flex; align-items: center; gap: 8px; }
+.g-time { width: auto; flex: 1; }
+.g-tarde-clear { font-size: 12px; color: var(--vw-grey-4); padding: 6px 8px; border-radius: 6px; background: var(--vw-grey-1); }
+.g-tarde-clear:hover { color: var(--red); }
+.g-pop-hint { font-size: 11px; color: var(--vw-grey-3); margin-top: 5px; }
+.g-pop-err { font-size: 12px; color: var(--red); font-weight: 600; min-height: 0; margin-top: 6px; }
+.g-pop-err:empty { display: none; }
+.g-pop-actions { display: flex; gap: 8px; margin-top: 12px; }
+.g-btn { flex: 1; padding: 9px; border-radius: 8px; font-size: 13px; font-weight: 700; }
+.g-btn.primary { background: var(--vw-blue); color: white; }
+.g-btn.primary:hover { background: var(--vw-blue-light); }
+.g-btn.ghost { background: var(--vw-grey-1); color: var(--vw-grey-4); }
+.g-btn.ghost:hover { background: var(--vw-grey-2); }
+
+/* Llegada tarde en el chip del calendario */
+.gname-tarde { font-weight: 700; }
+.gname.trabaja .gname-tarde { color: #92400E; }
+
+/* Novedades derivadas de guardias */
+.personal-item.nov-hoy { background: #E0F2FE; }
+.nov-ico { margin-right: 2px; }
+
 /* ===== Calendario / agenda de guardias ===== */
 .gcal-month {
   background: white; border-radius: var(--radius);
@@ -771,6 +809,8 @@ const GUARDIAS_ESTADOS = {
 const GUARDIAS_CODE2EST = Object.fromEntries(
   Object.entries(GUARDIAS_ESTADOS).map(([est, v]) => [v.code, est])
 );
+// Motivos rápidos sugeridos para una falta (igual se puede escribir otro)
+const GUARDIAS_MOTIVOS = ['Enfermedad', 'Tema personal', 'Sin aviso', 'Accidente', 'Familiar'];
 // BASE (extraída del Excel GUARDIASJUNJUL.xlsx, hoja JUNJULIO, jun–jul 2026).
 // Formato: 'fecha|<ER:JULIAN,PEPE,LOISI,FAZZINI>|<IND:MARTA,GISELA,TOMAS>'
 // Códigos: t=trabaja f=franco v=vacaciones c=curso x=falta
@@ -799,6 +839,7 @@ let guardiasMesFiltro = '';          // '' = todos, o 'YYYY-MM'
 let guardiasMesInit = false;         // ya se fijó el mes inicial (el actual)
 let guardiasLoaded = false;          // overrides ya traídos de Supabase
 let guardiasSinTabla = false;        // la tabla saldos_guardias todavía no existe
+let guardiasNovedadesTried = false;  // ya se intentó cargar guardias para Novedades
 let guardiasEditCell = null;         // celda con el selector abierto
 
 // =======================================================================
@@ -1941,13 +1982,16 @@ function renderPersonal() {
     wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando INFORME...</div></div>';
     return;
   }
-  const items = Array.isArray(data.personal) ? data.personal : [];
-  if (!items.length) {
-    wrap.innerHTML = '<div class="empty"><div class="ico">👥</div><div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin novedades del personal</div></div>';
-    return;
+  // Asegurar que las guardias estén cargadas (para las novedades derivadas)
+  if (!guardiasLoaded && !guardiasSinTabla && !guardiasNovedadesTried) {
+    guardiasNovedadesTried = true;
+    loadGuardiasOverrides().then(() => renderPersonal()).catch(() => {});
   }
 
-  const html = items.map(r => {
+  const guardiasHtml = renderNovedadesGuardias();
+  const items = Array.isArray(data.personal) ? data.personal : [];
+
+  const sheetHtml = items.map(r => {
     const t = String(r.texto || '').trim();
     const f = String(r.fecha || '').trim();
     if (r.tipo === 'header')   return `<div class="personal-header-main">${escapeHtml(t)}</div>`;
@@ -1959,7 +2003,39 @@ function renderPersonal() {
     </div>`;
   }).join('');
 
-  wrap.innerHTML = `<div class="personal-wrap"><div class="personal-body">${html}</div></div>`;
+  if (!guardiasHtml && !sheetHtml) {
+    wrap.innerHTML = '<div class="empty"><div class="ico">👥</div><div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin novedades del personal</div></div>';
+    return;
+  }
+
+  wrap.innerHTML = `<div class="personal-wrap"><div class="personal-body">${guardiasHtml}${sheetHtml}</div></div>`;
+}
+
+// Novedades derivadas de las guardias: faltas (con motivo) y llegadas tarde.
+function renderNovedadesGuardias() {
+  if (!guardiasOverrides || !guardiasOverrides.size) return '';
+  const items = [];
+  guardiasOverrides.forEach((info, key) => {
+    const parts = key.split('|');
+    const fecha = parts[0], sucursal = parts[1], vendedor = parts[2];
+    if (info.estado === 'falta') {
+      items.push({ fecha, tipo: 'falta', vendedor, sucursal,
+        txt: `${cap(vendedor)} (${sucursal}) — Falta${info.motivo ? ': ' + info.motivo : ''}` });
+    }
+    if (info.llegadaTarde) {
+      items.push({ fecha, tipo: 'tarde', vendedor, sucursal,
+        txt: `${cap(vendedor)} (${sucursal}) — Llegó tarde ${info.llegadaTarde}` });
+    }
+  });
+  if (!items.length) return '';
+  items.sort((a, b) => b.fecha.localeCompare(a.fecha) || a.vendedor.localeCompare(b.vendedor));
+  const hoy = hoyISO();
+  const rows = items.map(it => `
+    <div class="personal-item ${it.fecha === hoy ? 'nov-hoy' : ''}">
+      <span class="p-txt"><span class="nov-ico ${it.tipo}">${it.tipo === 'falta' ? '⚠️' : '⏰'}</span> ${escapeHtml(it.txt)}</span>
+      <span class="p-date">${dowName(it.fecha)} ${fechaDM(it.fecha)}${it.fecha === hoy ? ' · HOY' : ''}</span>
+    </div>`).join('');
+  return `<div class="personal-header-main">📋 Novedades de guardias (faltas y llegadas tarde)</div>${rows}`;
 }
 
 // =======================================================================
@@ -1985,11 +2061,19 @@ function buildGuardiasBase() {
   return guardiasBaseMap;
 }
 
-function guardiaEstado(fecha, sucursal, vendedor) {
+// Info completa de una celda: { estado, motivo, llegadaTarde }
+function guardiaInfo(fecha, sucursal, vendedor) {
   const k = fecha + '|' + sucursal + '|' + vendedor;
-  if (guardiasOverrides.has(k)) return guardiasOverrides.get(k);
+  if (guardiasOverrides.has(k)) {
+    const o = guardiasOverrides.get(k);
+    return { estado: o.estado, motivo: o.motivo || '', llegadaTarde: o.llegadaTarde || '' };
+  }
   const base = buildGuardiasBase()[fecha];
-  return (base && base[sucursal] && base[sucursal][vendedor]) || 'franco';
+  const est = (base && base[sucursal] && base[sucursal][vendedor]) || 'franco';
+  return { estado: est, motivo: '', llegadaTarde: '' };
+}
+function guardiaEstado(fecha, sucursal, vendedor) {
+  return guardiaInfo(fecha, sucursal, vendedor).estado;
 }
 
 function puedeEditarGuardias() {
@@ -1998,17 +2082,24 @@ function puedeEditarGuardias() {
 }
 
 async function loadGuardiasOverrides() {
-  const data = await sbFetch('saldos_guardias?select=fecha,sucursal,vendedor,estado');
+  const data = await sbFetch('saldos_guardias?select=fecha,sucursal,vendedor,estado,motivo,llegada_tarde');
   guardiasOverrides = new Map();
   (data || []).forEach(r => {
-    guardiasOverrides.set(r.fecha + '|' + r.sucursal + '|' + r.vendedor, r.estado);
+    guardiasOverrides.set(r.fecha + '|' + r.sucursal + '|' + r.vendedor, {
+      estado: r.estado, motivo: r.motivo || '', llegadaTarde: r.llegada_tarde || '',
+    });
   });
   guardiasLoaded = true;
 }
 
-async function saveGuardia(fecha, sucursal, vendedor, estado) {
+async function saveGuardia(fecha, sucursal, vendedor, estado, motivo, llegadaTarde) {
   const sess = getSharedCookie() || {};
-  const body = JSON.stringify([{ fecha, sucursal, vendedor, estado, updated_by: sess.usuario || '' }]);
+  const body = JSON.stringify([{
+    fecha, sucursal, vendedor, estado,
+    motivo: motivo || null,
+    llegada_tarde: llegadaTarde || null,
+    updated_by: sess.usuario || '',
+  }]);
   await sbFetch('saldos_guardias?on_conflict=fecha,sucursal,vendedor', {
     method: 'POST',
     headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
@@ -2129,11 +2220,15 @@ function renderGuardiaDiaCell(fecha, dia, editable) {
   const esHoy = (fecha === hoyISO());
   const sucBlocks = GUARDIAS_SUCURSALES.map(suc => {
     const chips = suc.vendedores.map(v => {
-      const est = guardiaEstado(fecha, suc.nombre, v);
-      const meta = GUARDIAS_ESTADOS[est] || GUARDIAS_ESTADOS.franco;
-      const cls = 'gname ' + est + (editable ? ' editable' : '');
+      const info = guardiaInfo(fecha, suc.nombre, v);
+      const meta = GUARDIAS_ESTADOS[info.estado] || GUARDIAS_ESTADOS.franco;
+      let tip = cap(v) + ' · ' + meta.label;
+      if (info.estado === 'falta' && info.motivo) tip += ': ' + info.motivo;
+      let extra = '';
+      if (info.llegadaTarde) { tip += ' · llegó tarde ' + info.llegadaTarde; extra = ` <span class="gname-tarde">⏰${escapeHtml(info.llegadaTarde)}</span>`; }
+      const cls = 'gname ' + info.estado + (editable ? ' editable' : '');
       const oc = editable ? `onclick="abrirGuardiaPop(event,'${fecha}','${escapeHtml(suc.nombre)}','${v}')"` : '';
-      return `<span class="${cls}" ${oc} title="${escapeHtml(cap(v) + ' · ' + meta.label)}">${escapeHtml(cap(v))}</span>`;
+      return `<span class="${cls}" ${oc} title="${escapeHtml(tip)}">${escapeHtml(cap(v))}${extra}</span>`;
     }).join('');
     return `<div class="gcal-suc">
       <div class="gcal-suc-lbl">${escapeHtml(suc.nombre)}</div>
@@ -2189,55 +2284,126 @@ function setGuardiasMes(m) { guardiasMesFiltro = m || ''; drawGuardias(); }
 function abrirGuardiaPop(ev, fecha, sucursal, vendedor) {
   ev.stopPropagation();
   cerrarGuardiaPop();
-  const cur = guardiaEstado(fecha, sucursal, vendedor);
-  const sucAttr = sucursal.replace(/'/g, "\\'");
+  const info = guardiaInfo(fecha, sucursal, vendedor);
   const overlay = document.createElement('div');
   overlay.className = 'g-pop-overlay';
   overlay.onclick = cerrarGuardiaPop;
   const pop = document.createElement('div');
-  pop.className = 'g-pop';
+  pop.className = 'g-pop g-pop-wide';
   pop.onclick = e => e.stopPropagation();
-  pop.innerHTML = Object.entries(GUARDIAS_ESTADOS).map(([est, v]) =>
-    `<button class="g-pop-opt ${est === cur ? 'current' : ''}" onclick="setGuardia('${fecha}','${escapeHtml(sucAttr)}','${vendedor}','${est}')">
-      <span class="dot ${est}"></span>${escapeHtml(v.label)}</button>`).join('');
   document.body.appendChild(overlay);
   document.body.appendChild(pop);
-  const r = ev.currentTarget.getBoundingClientRect();
-  pop.style.top = (r.bottom + window.scrollY + 4) + 'px';
-  pop.style.left = (r.left + window.scrollX) + 'px';
-  const pr = pop.getBoundingClientRect();
-  if (pr.right > window.innerWidth - 8) {
-    pop.style.left = (window.innerWidth - pr.width - 8 + window.scrollX) + 'px';
-  }
-  guardiasEditCell = { overlay, pop };
+  guardiasEditCell = {
+    fecha, sucursal, vendedor,
+    estado: info.estado, motivo: info.motivo, llegadaTarde: info.llegadaTarde,
+    overlay, pop, anchorRect: ev.currentTarget.getBoundingClientRect(),
+  };
+  repintarPop();
 }
 
 function cerrarGuardiaPop() {
   if (guardiasEditCell) {
-    guardiasEditCell.overlay.remove();
-    guardiasEditCell.pop.remove();
+    if (guardiasEditCell.overlay) guardiasEditCell.overlay.remove();
+    if (guardiasEditCell.pop) guardiasEditCell.pop.remove();
     guardiasEditCell = null;
   }
 }
 
-async function setGuardia(fecha, sucursal, vendedor, estado) {
-  cerrarGuardiaPop();
+function repintarPop() {
+  const e = guardiasEditCell;
+  if (!e || !e.pop) return;
+  e.pop.innerHTML = renderGuardiaPopBody();
+  posicionarPop();
+}
+
+function posicionarPop() {
+  const e = guardiasEditCell;
+  if (!e || !e.pop) return;
+  const r = e.anchorRect;
+  e.pop.style.top = (r.bottom + window.scrollY + 4) + 'px';
+  e.pop.style.left = (r.left + window.scrollX) + 'px';
+  const pr = e.pop.getBoundingClientRect();
+  if (pr.right > window.innerWidth - 8) {
+    e.pop.style.left = (Math.max(8, window.innerWidth - pr.width - 8) + window.scrollX) + 'px';
+  }
+}
+
+function renderGuardiaPopBody() {
+  const e = guardiasEditCell;
+  const estados = Object.entries(GUARDIAS_ESTADOS).map(([est, v]) =>
+    `<button type="button" class="g-est ${est === e.estado ? 'sel' : ''}" onclick="setPopEstado('${est}')">
+      <span class="dot ${est}"></span>${escapeHtml(v.label)}</button>`).join('');
+  let extra = '';
+  if (e.estado === 'falta') {
+    const chips = GUARDIAS_MOTIVOS.map(m =>
+      `<button type="button" class="g-motivo-chip ${e.motivo === m ? 'sel' : ''}" onclick="setPopMotivo('${escapeHtml(m)}')">${escapeHtml(m)}</button>`).join('');
+    extra = `
+      <div class="g-pop-sec">Motivo de la falta</div>
+      <div class="g-motivo-chips">${chips}</div>
+      <input class="g-pop-input" id="gMotivoInput" placeholder="o escribí otro motivo..." value="${escapeHtml(e.motivo)}" oninput="setPopMotivoInput(this.value)">`;
+  } else if (e.estado === 'trabaja') {
+    extra = `
+      <div class="g-pop-sec">Llegada tarde (opcional)</div>
+      <div class="g-tarde-row">
+        <input type="time" class="g-pop-input g-time" id="gTardeInput" value="${escapeHtml(e.llegadaTarde)}" onchange="setPopTarde(this.value)">
+        ${e.llegadaTarde ? '<button type="button" class="g-tarde-clear" onclick="setPopTarde(\'\')">Quitar</button>' : ''}
+      </div>
+      <div class="g-pop-hint">Si llegó tarde igual queda como "Trabaja".</div>`;
+  }
+  return `
+    <div class="g-pop-head">${escapeHtml(cap(e.vendedor))} · ${escapeHtml(e.sucursal)}
+      <div class="g-pop-sub">${dowName(e.fecha)} ${fechaDM(e.fecha)}</div>
+    </div>
+    <div class="g-pop-sec">Estado del día</div>
+    <div class="g-estados">${estados}</div>
+    ${extra}
+    <div class="g-pop-err" id="gPopErr"></div>
+    <div class="g-pop-actions">
+      <button type="button" class="g-btn ghost" onclick="cerrarGuardiaPop()">Cancelar</button>
+      <button type="button" class="g-btn primary" onclick="guardarGuardia()">Guardar</button>
+    </div>`;
+}
+
+function setPopEstado(est) {
+  guardiasEditCell.estado = est;
+  if (est !== 'falta') guardiasEditCell.motivo = '';
+  if (est !== 'trabaja') guardiasEditCell.llegadaTarde = '';
+  repintarPop();
+}
+function setPopMotivo(m) { guardiasEditCell.motivo = m; repintarPop(); }
+function setPopMotivoInput(v) { guardiasEditCell.motivo = v; }  // sin repintar: conserva el foco
+function setPopTarde(v) { guardiasEditCell.llegadaTarde = v; repintarPop(); }
+
+async function guardarGuardia() {
+  const e = guardiasEditCell;
+  if (!e) return;
+  const motivo = e.estado === 'falta' ? String(e.motivo || '').trim() : '';
+  const llegada = e.estado === 'trabaja' ? String(e.llegadaTarde || '').trim() : '';
+  if (e.estado === 'falta' && !motivo) {
+    const err = document.getElementById('gPopErr');
+    if (err) err.textContent = 'Poné el motivo de la falta.';
+    const inp = document.getElementById('gMotivoInput');
+    if (inp) inp.focus();
+    return;
+  }
+  const fecha = e.fecha, sucursal = e.sucursal, vendedor = e.vendedor, estado = e.estado;
   const k = fecha + '|' + sucursal + '|' + vendedor;
   const prev = guardiasOverrides.has(k) ? guardiasOverrides.get(k) : undefined;
-  guardiasOverrides.set(k, estado);
+  guardiasOverrides.set(k, { estado, motivo, llegadaTarde: llegada });
+  cerrarGuardiaPop();
   drawGuardias();
   const status = document.getElementById('guardiasStatus');
   if (status) status.textContent = 'Guardando…';
   try {
-    await saveGuardia(fecha, sucursal, vendedor, estado);
+    await saveGuardia(fecha, sucursal, vendedor, estado, motivo, llegada);
     const st = document.getElementById('guardiasStatus');
     if (st) st.textContent = 'Guardado ✓ ' + new Date().toLocaleTimeString('es-AR');
-  } catch (e) {
-    console.error('Guardar guardia:', e);
+  } catch (err2) {
+    console.error('Guardar guardia:', err2);
     if (prev === undefined) guardiasOverrides.delete(k); else guardiasOverrides.set(k, prev);
     drawGuardias();
     const st = document.getElementById('guardiasStatus');
-    if (st) st.textContent = '⚠️ No se pudo guardar: ' + (e.message || e);
+    if (st) st.textContent = '⚠️ No se pudo guardar: ' + (err2.message || err2);
   }
 }
 

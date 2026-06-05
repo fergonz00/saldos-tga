@@ -12,9 +12,11 @@ create table if not exists public.saldos_guardias (
   fecha       date        not null,
   sucursal    text        not null,
   vendedor    text        not null,
-  estado      text        not null,   -- trabaja | franco | vacaciones | curso | falta
-  updated_by  text,
-  updated_at  timestamptz not null default now(),
+  estado        text        not null,   -- trabaja | franco | vacaciones | curso | falta
+  motivo        text,                    -- motivo de la falta (ej: Enfermedad)
+  llegada_tarde text,                    -- hora de llegada tarde "HH:MM" (convive con trabaja)
+  updated_by    text,
+  updated_at    timestamptz not null default now(),
   primary key (fecha, sucursal, vendedor)
 );
 
