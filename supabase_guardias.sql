@@ -21,26 +21,13 @@ create table if not exists public.saldos_guardias (
 -- Escritura/lectura con la anon key (igual que saldos_fondos_diario).
 alter table public.saldos_guardias enable row level security;
 
-drop policy if exists "guardias anon read"  on public.saldos_guardias;
-drop policy if exists "guardias anon write" on public.saldos_guardias;
+drop policy if exists guardias_anon_read  on public.saldos_guardias;
+drop policy if exists guardias_anon_write on public.saldos_guardias;
 
-create policy "guardias anon read"
+create policy guardias_anon_read
   on public.saldos_guardias for select
   using (true);
 
-create policy "guardias anon write"
+create policy guardias_anon_write
   on public.saldos_guardias for all
   using (true) with check (true);
-
--- Mantener updated_at fresco en cada upsert
-create or replace function public.touch_saldos_guardias()
-returns trigger language plpgsql as $$
-begin
-  new.updated_at = now();
-  return new;
-end $$;
-
-drop trigger if exists trg_touch_saldos_guardias on public.saldos_guardias;
-create trigger trg_touch_saldos_guardias
-  before update on public.saldos_guardias
-  for each row execute function public.touch_saldos_guardias();
