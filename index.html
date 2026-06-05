@@ -745,6 +745,7 @@ let guardiasBaseMap = null;          // fecha → { 'Entre Ríos': {VEND:estado}
 let guardiasOverrides = new Map();   // 'fecha|sucursal|vendedor' → estado
 let guardiasMesFiltro = '';          // '' = todos, o 'YYYY-MM'
 let guardiasLoaded = false;          // overrides ya traídos de Supabase
+let guardiasSinTabla = false;        // la tabla saldos_guardias todavía no existe
 let guardiasEditCell = null;         // celda con el selector abierto
 
 // =======================================================================
@@ -1969,12 +1970,20 @@ async function renderGuardias() {
     wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando guardias...</div></div>';
     try {
       await loadGuardiasOverrides();
+      guardiasSinTabla = false;
     } catch (e) {
       console.error('Guardias:', e);
+      const msg = String(e && e.message || e);
+      // Tabla aún no creada → modo solo lectura sobre la base (no romper la vista).
+      if (/PGRST205|Could not find the table|42P01|does not exist/i.test(msg)) {
+        guardiasSinTabla = true;
+        guardiasOverrides = new Map();
+        drawGuardias();
+        return;
+      }
       wrap.innerHTML = `<div class="errbox"><div class="ico">⚠️</div>
         <div class="ttl">No se pudieron cargar las guardias</div>
-        <div class="det">${escapeHtml(e.message || String(e))}</div>
-        <div style="margin-top:10px;font-size:12px;color:var(--vw-grey-4)">Falta crear la tabla <code>saldos_guardias</code> en Supabase.</div></div>`;
+        <div class="det">${escapeHtml(msg)}</div></div>`;
       return;
     }
   }
@@ -1990,7 +1999,7 @@ function guardiasFechas() {
 function drawGuardias() {
   const wrap = document.getElementById('guardiasContent');
   if (!wrap) return;
-  const editable = puedeEditarGuardias();
+  const editable = puedeEditarGuardias() && !guardiasSinTabla;
   const fechas = guardiasFechas();
   const meses = Array.from(new Set(fechas.map(f => f.slice(0, 7)))).sort();
   if (guardiasMesFiltro && !meses.includes(guardiasMesFiltro)) guardiasMesFiltro = '';
@@ -2006,7 +2015,14 @@ function drawGuardias() {
   const bloques = GUARDIAS_SUCURSALES.map(suc => renderGuardiaSucursal(suc, fechasVis, editable)).join('');
   const ausencias = renderGuardiaAusencias(fechasVis);
 
+  const bannerSinTabla = guardiasSinTabla ? `
+    <div class="errbox" style="text-align:left;padding:14px 16px;margin-bottom:14px">
+      <div class="ttl" style="margin-bottom:4px">⚠️ Modo sólo lectura</div>
+      <div style="font-size:13px;color:var(--vw-grey-4)">Estás viendo el cronograma base. Para poder <strong>editar y guardar</strong> falta crear la tabla en Supabase: corré una vez el archivo <code>supabase_guardias.sql</code> en Supabase → SQL Editor.</div>
+    </div>` : '';
+
   wrap.innerHTML = `
+    ${bannerSinTabla}
     <div class="guardias-bar">
       <div>
         <div class="g-title">Cronograma de guardias · Ventas</div>
