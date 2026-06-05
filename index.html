@@ -467,6 +467,127 @@ td.num.neg, td.importe.neg { color: var(--red); }
   thead th, tbody td { padding: 8px 10px; font-size: 12px; }
   .vto-group-head .stats { gap: 10px; font-size: 12px; }
 }
+
+/* ===== Sub-pestañas (dentro de Personal) ===== */
+.subtabs {
+  display: flex; gap: 4px; margin-bottom: 18px;
+  background: var(--vw-grey-2); padding: 4px; border-radius: 10px;
+  width: fit-content; max-width: 100%; overflow-x: auto;
+}
+.subtab {
+  padding: 8px 16px; background: transparent; border-radius: 7px;
+  font-size: 13px; font-weight: 600; color: var(--vw-grey-4);
+  white-space: nowrap; transition: all 0.15s;
+}
+.subtab.active { background: white; color: var(--vw-blue); box-shadow: var(--shadow); }
+.subpanel { display: none; }
+.subpanel.active { display: block; }
+
+/* ===== Cronograma de guardias ===== */
+.guardias-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.guardias-bar .g-title { font-size: 15px; font-weight: 700; color: var(--vw-blue); }
+.guardias-bar .g-sub { font-size: 12px; color: var(--vw-grey-4); margin-top: 2px; }
+.guardias-bar select {
+  font-family: var(--font); font-size: 13px; padding: 7px 12px;
+  border-radius: 8px; border: 1px solid var(--vw-grey-2); background: white;
+  color: var(--vw-black); cursor: pointer; outline: none;
+}
+.guardias-bar .g-status { font-size: 12px; color: var(--vw-grey-3); min-height: 16px; }
+
+.guardias-legend {
+  display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px;
+  font-size: 12px; color: var(--vw-grey-4);
+}
+.guardias-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+.guardias-legend .dot { width: 12px; height: 12px; border-radius: 3px; }
+
+.gsuc-block {
+  background: white; border-radius: var(--radius);
+  box-shadow: var(--shadow); overflow: hidden; margin-bottom: 16px;
+}
+.gsuc-head {
+  padding: 12px 18px; background: var(--vw-blue); color: white;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.gtable-scroll { overflow-x: auto; }
+table.gtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.gtable th, table.gtable td {
+  padding: 8px 10px; text-align: center; border-bottom: 1px solid var(--vw-grey-2);
+  white-space: nowrap;
+}
+table.gtable thead th {
+  background: var(--vw-grey-1); color: var(--vw-grey-4);
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+  position: sticky; top: 0; z-index: 1;
+}
+table.gtable td.g-day {
+  text-align: left; font-weight: 600; color: var(--vw-blue);
+  white-space: nowrap; position: sticky; left: 0; background: white; z-index: 1;
+}
+table.gtable td.g-day .g-dow { color: var(--vw-grey-3); font-weight: 500; margin-right: 6px; text-transform: capitalize; }
+table.gtable tr.g-weekend td.g-day { color: var(--vw-grey-4); }
+table.gtable tr.g-weekend { background: var(--vw-grey-1); }
+table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
+
+.g-cell { padding: 4px 6px; }
+.g-chip {
+  display: inline-block; min-width: 58px; padding: 5px 8px; border-radius: 7px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
+  cursor: default; user-select: none; transition: filter 0.12s;
+}
+.g-chip.editable { cursor: pointer; }
+.g-chip.editable:hover { filter: brightness(0.94); }
+.g-chip.trabaja    { background: var(--green-soft);  color: #065F46; }
+.g-chip.franco     { background: var(--vw-grey-2);   color: var(--vw-grey-4); }
+.g-chip.vacaciones { background: #DBEAFE;            color: #1E40AF; }
+.g-chip.curso      { background: var(--orange-soft); color: #92400E; }
+.g-chip.falta      { background: var(--red-soft);    color: #991B1B; }
+.dot.trabaja    { background: var(--green-soft);  border: 1px solid #6EE7B7; }
+.dot.franco     { background: var(--vw-grey-2); }
+.dot.vacaciones { background: #DBEAFE;            border: 1px solid #93C5FD; }
+.dot.curso      { background: var(--orange-soft); border: 1px solid #FCD34D; }
+.dot.falta      { background: var(--red-soft);    border: 1px solid #FCA5A5; }
+
+/* Popover selector de estado */
+.g-pop-overlay { position: fixed; inset: 0; z-index: 200; }
+.g-pop {
+  position: absolute; z-index: 201; background: white;
+  border-radius: 10px; box-shadow: var(--shadow-lg);
+  border: 1px solid var(--vw-grey-2); padding: 6px; min-width: 150px;
+}
+.g-pop .g-pop-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border-radius: 7px; background: transparent;
+  font-size: 13px; font-weight: 600; color: var(--vw-black); text-align: left;
+}
+.g-pop .g-pop-opt:hover { background: var(--vw-grey-1); }
+.g-pop .g-pop-opt .dot { width: 12px; height: 12px; border-radius: 3px; }
+.g-pop .g-pop-opt.current { outline: 2px solid var(--vw-blue); outline-offset: -2px; }
+
+.guardias-ausentes {
+  background: white; border-radius: var(--radius);
+  box-shadow: var(--shadow); overflow: hidden; margin-bottom: 16px;
+}
+.guardias-ausentes .ga-head {
+  padding: 12px 18px; border-bottom: 1px solid var(--vw-grey-2);
+  font-size: 13px; font-weight: 700; color: var(--vw-blue);
+}
+.guardias-ausentes .ga-item {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 10px 18px; font-size: 13px; border-bottom: 1px solid var(--vw-grey-2);
+}
+.guardias-ausentes .ga-item:last-child { border-bottom: none; }
+.guardias-ausentes .ga-when { color: var(--vw-grey-4); white-space: nowrap; }
+.guardias-ausentes .ga-tag {
+  font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 100px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.ga-tag.vacaciones { background: #DBEAFE; color: #1E40AF; }
+.ga-tag.falta      { background: var(--red-soft); color: #991B1B; }
+.ga-tag.curso      { background: var(--orange-soft); color: #92400E; }
 </style>
 </head>
 <body>
@@ -528,7 +649,16 @@ td.num.neg, td.importe.neg { color: var(--red); }
 
     <!-- =================== PANEL PERSONAL =================== -->
     <section class="panel" id="panelPersonal">
-      <div id="personalContent"></div>
+      <div class="subtabs">
+        <button class="subtab active" data-sub="novedades" onclick="setPersonalSub('novedades')">Novedades</button>
+        <button class="subtab" data-sub="guardias" onclick="setPersonalSub('guardias')">Guardias Ventas</button>
+      </div>
+      <div class="subpanel active" id="subNovedades">
+        <div id="personalContent"></div>
+      </div>
+      <div class="subpanel" id="subGuardias">
+        <div id="guardiasContent"></div>
+      </div>
     </section>
 
   </main>
@@ -540,7 +670,16 @@ td.num.neg, td.importe.neg { color: var(--red); }
 // =======================================================================
 const SHARED_COOKIE = 'tga_session';
 const SHARED_DOMAIN = '.titogonzalez.online';
-const USUARIOS_PERMITIDOS = ['fngonzalez', 'fgonzalez'];
+const USUARIOS_PERMITIDOS = ['fngonzalez', 'fgonzalez', 'marianom'];
+
+// Quién ve todo el sitio (admins) y qué solapas ve cada usuario restringido.
+// Un usuario que NO esté en ADMIN_USERS sólo ve las solapas de TAB_ACCESS.
+const ADMIN_USERS = ['fngonzalez', 'fgonzalez'];
+const TAB_ACCESS = {
+  marianom: ['personal'],   // MarianoM (carga las guardias): sólo Personal
+};
+// Quién puede editar el cronograma de guardias
+const GUARDIAS_EDITORES = ['fngonzalez', 'fgonzalez', 'marianom'];
 
 // URL del Web App publicado en la planilla espejo.
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyRTqqpQMjKDL82Z5Cjd9IJWPQnINF0LAEvji8FizfXMBO8Cz0IVbTSnQnNmH_rRxz9yg/exec';
@@ -562,6 +701,53 @@ let proxVtoSelected = new Set();
 let proxVtoOpen = new Set();
 
 // =======================================================================
+// GUARDIAS VENTAS · cronograma editable
+// =======================================================================
+// Sucursales y sus vendedores (orden fijo, igual que el Excel madre).
+const GUARDIAS_SUCURSALES = [
+  { nombre: 'Entre Ríos',     vendedores: ['JULIAN', 'PEPE', 'LOISI', 'FAZZINI'] },
+  { nombre: 'Independencia',  vendedores: ['MARTA', 'GISELA', 'TOMAS'] },
+];
+// Estados posibles de cada celda
+const GUARDIAS_ESTADOS = {
+  trabaja:    { code: 't', label: 'Trabaja',    ab: 'Trab' },
+  franco:     { code: 'f', label: 'Franco',     ab: 'Franco' },
+  vacaciones: { code: 'v', label: 'Vacaciones', ab: 'Vac' },
+  curso:      { code: 'c', label: 'Curso',      ab: 'Curso' },
+  falta:      { code: 'x', label: 'Falta',      ab: 'Falta' },
+};
+const GUARDIAS_CODE2EST = Object.fromEntries(
+  Object.entries(GUARDIAS_ESTADOS).map(([est, v]) => [v.code, est])
+);
+// BASE (extraída del Excel GUARDIASJUNJUL.xlsx, hoja JUNJULIO, jun–jul 2026).
+// Formato: 'fecha|<ER:JULIAN,PEPE,LOISI,FAZZINI>|<IND:MARTA,GISELA,TOMAS>'
+// Códigos: t=trabaja f=franco v=vacaciones c=curso x=falta
+// Vacaciones de Julián cargadas: lun 29/jun → vuelve lun 6/jul.
+const GUARDIAS_BASE_RAW = [
+  '2026-06-01|fttt|ttt', '2026-06-02|ttft|ttt', '2026-06-03|tttf|ttt', '2026-06-04|tftt|ttt',
+  '2026-06-05|fttt|ttt', '2026-06-06|ttff|fff', '2026-06-07|ffff|fff', '2026-06-08|tftt|ttt',
+  '2026-06-09|fttt|ttt', '2026-06-10|tttf|ttt', '2026-06-11|ttft|ttt', '2026-06-12|ttft|ttt',
+  '2026-06-13|fftt|fff', '2026-06-14|ffff|fff', '2026-06-15|fttt|ttt', '2026-06-16|tftt|ttt',
+  '2026-06-17|tttf|ttt', '2026-06-18|tftt|ttt', '2026-06-19|fttt|ttt', '2026-06-20|ttff|fff',
+  '2026-06-21|ffff|fff', '2026-06-22|ttft|ttt', '2026-06-23|tftt|ttt', '2026-06-24|tttf|ttt',
+  '2026-06-25|fttt|ttt', '2026-06-26|ttft|ttt', '2026-06-27|fftt|fff', '2026-06-28|ffff|fff',
+  '2026-06-29|vttt|ttt', '2026-06-30|vttt|ttt', '2026-07-01|vttf|ttt', '2026-07-02|vtft|ttt',
+  '2026-07-03|vftt|ttt', '2026-07-04|vttf|fff', '2026-07-05|vfff|fff', '2026-07-06|fttt|ttt',
+  '2026-07-07|cttt|ttt', '2026-07-08|tttf|ttt', '2026-07-09|ttft|ttt', '2026-07-10|tftt|ttt',
+  '2026-07-11|tfft|fff', '2026-07-12|ffff|fff', '2026-07-13|fttt|ttt', '2026-07-14|ttft|ttt',
+  '2026-07-15|tttf|ttt', '2026-07-16|tftt|ttt', '2026-07-17|tfft|ttt', '2026-07-18|fttf|fff',
+  '2026-07-19|ffff|fff', '2026-07-20|tftt|ttt', '2026-07-21|fttt|ttt', '2026-07-22|tttf|ttt',
+  '2026-07-23|ttft|ttt', '2026-07-24|fttt|ttt', '2026-07-25|tfft|fff', '2026-07-26|ffff|fff',
+  '2026-07-27|fttt|ttt', '2026-07-28|tftt|ttt', '2026-07-29|tttf|ttt', '2026-07-30|ttft|ttt',
+  '2026-07-31|tftt|ttt',
+];
+let guardiasBaseMap = null;          // fecha → { 'Entre Ríos': {VEND:estado}, ... }
+let guardiasOverrides = new Map();   // 'fecha|sucursal|vendedor' → estado
+let guardiasMesFiltro = '';          // '' = todos, o 'YYYY-MM'
+let guardiasLoaded = false;          // overrides ya traídos de Supabase
+let guardiasEditCell = null;         // celda con el selector abierto
+
+// =======================================================================
 // SESIÓN (cookie SSO compartida)
 // =======================================================================
 function getSharedCookie() {
@@ -578,11 +764,27 @@ function showGate(msg) {
   document.getElementById('appScreen').classList.add('hidden');
   document.getElementById('gateScreen').classList.remove('hidden');
 }
+function tabsPermitidas(session) {
+  if (ADMIN_USERS.includes(session.usuario)) return ['compras', 'proxvtos', 'bancos', 'personal'];
+  return TAB_ACCESS[session.usuario] || [];
+}
 function enterApp(session) {
   document.getElementById('gateScreen').classList.add('hidden');
   document.getElementById('appScreen').classList.remove('hidden');
   document.getElementById('userName').textContent = session.nombre || session.usuario;
-  loadCompras();
+
+  // Mostrar sólo las solapas permitidas para este usuario
+  const permitidas = tabsPermitidas(session);
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('hidden', !permitidas.includes(t.dataset.tab));
+  });
+
+  const primera = permitidas[0] || 'compras';
+  setTab(primera);
+  // Usuario restringido que sólo ve Personal → abrir directo en Guardias Ventas
+  if (primera === 'personal' && !ADMIN_USERS.includes(session.usuario)) {
+    setPersonalSub('guardias');
+  }
 }
 function logout() {
   clearSharedCookie();
@@ -604,9 +806,25 @@ function setTab(tab) {
   };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
+  if (tab === 'compras' && !lastCompras) loadCompras();
   if (tab === 'proxvtos') renderProxVtos();
   if (tab === 'bancos')   ensureInforme(renderBancos);
-  if (tab === 'personal') ensureInforme(renderPersonal);
+  if (tab === 'personal') {
+    const sub = document.querySelector('.subtab.active')?.dataset.sub || 'novedades';
+    if (sub === 'guardias') renderGuardias();
+    else ensureInforme(renderPersonal);
+  }
+}
+
+// Sub-pestañas dentro de Personal: Novedades / Guardias Ventas
+function setPersonalSub(sub) {
+  document.querySelectorAll('.subtab').forEach(t => t.classList.toggle('active', t.dataset.sub === sub));
+  document.querySelectorAll('.subpanel').forEach(p => p.classList.remove('active'));
+  const map = { novedades: 'subNovedades', guardias: 'subGuardias' };
+  const el = document.getElementById(map[sub]);
+  if (el) el.classList.add('active');
+  if (sub === 'novedades') ensureInforme(renderPersonal);
+  if (sub === 'guardias')  renderGuardias();
 }
 
 // =======================================================================
@@ -1689,6 +1907,257 @@ function renderPersonal() {
 
   wrap.innerHTML = `<div class="personal-wrap"><div class="personal-body">${html}</div></div>`;
 }
+
+// =======================================================================
+// GUARDIAS VENTAS · cronograma editable (persistido en Supabase)
+// =======================================================================
+function buildGuardiasBase() {
+  if (guardiasBaseMap) return guardiasBaseMap;
+  guardiasBaseMap = {};
+  GUARDIAS_BASE_RAW.forEach(raw => {
+    const parts = raw.split('|');
+    const fecha = parts[0];
+    const dia = {};
+    GUARDIAS_SUCURSALES.forEach((suc, si) => {
+      const codes = parts[1 + si] || '';
+      const m = {};
+      suc.vendedores.forEach((v, vi) => {
+        m[v] = GUARDIAS_CODE2EST[codes[vi]] || 'franco';
+      });
+      dia[suc.nombre] = m;
+    });
+    guardiasBaseMap[fecha] = dia;
+  });
+  return guardiasBaseMap;
+}
+
+function guardiaEstado(fecha, sucursal, vendedor) {
+  const k = fecha + '|' + sucursal + '|' + vendedor;
+  if (guardiasOverrides.has(k)) return guardiasOverrides.get(k);
+  const base = buildGuardiasBase()[fecha];
+  return (base && base[sucursal] && base[sucursal][vendedor]) || 'franco';
+}
+
+function puedeEditarGuardias() {
+  const s = getSharedCookie() || {};
+  return GUARDIAS_EDITORES.includes(s.usuario);
+}
+
+async function loadGuardiasOverrides() {
+  const data = await sbFetch('saldos_guardias?select=fecha,sucursal,vendedor,estado');
+  guardiasOverrides = new Map();
+  (data || []).forEach(r => {
+    guardiasOverrides.set(r.fecha + '|' + r.sucursal + '|' + r.vendedor, r.estado);
+  });
+  guardiasLoaded = true;
+}
+
+async function saveGuardia(fecha, sucursal, vendedor, estado) {
+  const sess = getSharedCookie() || {};
+  const body = JSON.stringify([{ fecha, sucursal, vendedor, estado, updated_by: sess.usuario || '' }]);
+  await sbFetch('saldos_guardias?on_conflict=fecha,sucursal,vendedor', {
+    method: 'POST',
+    headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body,
+  });
+}
+
+async function renderGuardias() {
+  const wrap = document.getElementById('guardiasContent');
+  if (!wrap) return;
+  if (!guardiasLoaded) {
+    wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando guardias...</div></div>';
+    try {
+      await loadGuardiasOverrides();
+    } catch (e) {
+      console.error('Guardias:', e);
+      wrap.innerHTML = `<div class="errbox"><div class="ico">⚠️</div>
+        <div class="ttl">No se pudieron cargar las guardias</div>
+        <div class="det">${escapeHtml(e.message || String(e))}</div>
+        <div style="margin-top:10px;font-size:12px;color:var(--vw-grey-4)">Falta crear la tabla <code>saldos_guardias</code> en Supabase.</div></div>`;
+      return;
+    }
+  }
+  drawGuardias();
+}
+
+function guardiasFechas() {
+  const set = new Set(Object.keys(buildGuardiasBase()));
+  guardiasOverrides.forEach((v, k) => set.add(k.split('|')[0]));
+  return Array.from(set).sort();
+}
+
+function drawGuardias() {
+  const wrap = document.getElementById('guardiasContent');
+  if (!wrap) return;
+  const editable = puedeEditarGuardias();
+  const fechas = guardiasFechas();
+  const meses = Array.from(new Set(fechas.map(f => f.slice(0, 7)))).sort();
+  if (guardiasMesFiltro && !meses.includes(guardiasMesFiltro)) guardiasMesFiltro = '';
+  const fechasVis = guardiasMesFiltro ? fechas.filter(f => f.slice(0, 7) === guardiasMesFiltro) : fechas;
+
+  const mesOpts = ['<option value="">Todos los meses</option>']
+    .concat(meses.map(m => `<option value="${m}" ${m === guardiasMesFiltro ? 'selected' : ''}>${escapeHtml(mesLabel(m))}</option>`))
+    .join('');
+
+  const legend = Object.entries(GUARDIAS_ESTADOS).map(([est, v]) =>
+    `<span class="lg"><span class="dot ${est}"></span>${escapeHtml(v.label)}</span>`).join('');
+
+  const bloques = GUARDIAS_SUCURSALES.map(suc => renderGuardiaSucursal(suc, fechasVis, editable)).join('');
+  const ausencias = renderGuardiaAusencias(fechasVis);
+
+  wrap.innerHTML = `
+    <div class="guardias-bar">
+      <div>
+        <div class="g-title">Cronograma de guardias · Ventas</div>
+        <div class="g-sub">${editable ? 'Tocá una celda para cambiar el estado. Se guarda solo.' : 'Vista de sólo lectura.'}</div>
+      </div>
+      <select onchange="setGuardiasMes(this.value)">${mesOpts}</select>
+    </div>
+    <div class="g-status" id="guardiasStatus"></div>
+    <div class="guardias-legend">${legend}</div>
+    ${ausencias}
+    ${bloques}
+  `;
+}
+
+function renderGuardiaSucursal(suc, fechas, editable) {
+  const ths = suc.vendedores.map(v => `<th>${escapeHtml(cap(v))}</th>`).join('');
+  const rows = fechas.map(f => {
+    const dw = dowNum(f);
+    const weekend = (dw === 0 || dw === 6);
+    const cells = suc.vendedores.map(v => {
+      const est = guardiaEstado(f, suc.nombre, v);
+      const meta = GUARDIAS_ESTADOS[est] || GUARDIAS_ESTADOS.franco;
+      const cls = 'g-chip ' + est + (editable ? ' editable' : '');
+      const oc = editable ? `onclick="abrirGuardiaPop(event,'${f}','${escapeHtml(suc.nombre)}','${v}')"` : '';
+      return `<td class="g-cell"><span class="${cls}" ${oc}>${escapeHtml(meta.ab)}</span></td>`;
+    }).join('');
+    return `<tr class="${weekend ? 'g-weekend' : ''}">
+      <td class="g-day"><span class="g-dow">${dowName(f)}</span>${fechaDM(f)}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+  return `
+    <div class="gsuc-block">
+      <div class="gsuc-head">${escapeHtml(suc.nombre)}</div>
+      <div class="gtable-scroll">
+        <table class="gtable">
+          <thead><tr><th style="text-align:left">Día</th>${ths}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderGuardiaAusencias(fechas) {
+  const raw = [];
+  fechas.forEach(f => GUARDIAS_SUCURSALES.forEach(suc => suc.vendedores.forEach(v => {
+    const est = guardiaEstado(f, suc.nombre, v);
+    if (est === 'vacaciones' || est === 'falta' || est === 'curso') {
+      raw.push({ fecha: f, vendedor: v, sucursal: suc.nombre, estado: est });
+    }
+  })));
+  if (!raw.length) return '';
+  raw.sort((a, b) =>
+    (a.vendedor + a.sucursal + a.estado).localeCompare(b.vendedor + b.sucursal + b.estado) ||
+    a.fecha.localeCompare(b.fecha));
+  const groups = [];
+  raw.forEach(it => {
+    const last = groups[groups.length - 1];
+    if (last && last.vendedor === it.vendedor && last.sucursal === it.sucursal &&
+        last.estado === it.estado && diasConsecutivos(last.hasta, it.fecha)) {
+      last.hasta = it.fecha;
+    } else {
+      groups.push({ vendedor: it.vendedor, sucursal: it.sucursal, estado: it.estado, desde: it.fecha, hasta: it.fecha });
+    }
+  });
+  const li = groups.map(g => {
+    const rango = g.desde === g.hasta
+      ? `${dowName(g.desde)} ${fechaDM(g.desde)}`
+      : `${dowName(g.desde)} ${fechaDM(g.desde)} → ${dowName(g.hasta)} ${fechaDM(g.hasta)}`;
+    return `<div class="ga-item">
+      <span><strong>${escapeHtml(cap(g.vendedor))}</strong> · ${escapeHtml(g.sucursal)}
+        <span class="ga-tag ${g.estado}">${escapeHtml(GUARDIAS_ESTADOS[g.estado].label)}</span></span>
+      <span class="ga-when">${rango}</span>
+    </div>`;
+  }).join('');
+  return `<div class="guardias-ausentes">
+    <div class="ga-head">Ausencias del período (${groups.length})</div>
+    ${li}
+  </div>`;
+}
+
+function setGuardiasMes(m) { guardiasMesFiltro = m || ''; drawGuardias(); }
+
+function abrirGuardiaPop(ev, fecha, sucursal, vendedor) {
+  ev.stopPropagation();
+  cerrarGuardiaPop();
+  const cur = guardiaEstado(fecha, sucursal, vendedor);
+  const sucAttr = sucursal.replace(/'/g, "\\'");
+  const overlay = document.createElement('div');
+  overlay.className = 'g-pop-overlay';
+  overlay.onclick = cerrarGuardiaPop;
+  const pop = document.createElement('div');
+  pop.className = 'g-pop';
+  pop.onclick = e => e.stopPropagation();
+  pop.innerHTML = Object.entries(GUARDIAS_ESTADOS).map(([est, v]) =>
+    `<button class="g-pop-opt ${est === cur ? 'current' : ''}" onclick="setGuardia('${fecha}','${escapeHtml(sucAttr)}','${vendedor}','${est}')">
+      <span class="dot ${est}"></span>${escapeHtml(v.label)}</button>`).join('');
+  document.body.appendChild(overlay);
+  document.body.appendChild(pop);
+  const r = ev.currentTarget.getBoundingClientRect();
+  pop.style.top = (r.bottom + window.scrollY + 4) + 'px';
+  pop.style.left = (r.left + window.scrollX) + 'px';
+  const pr = pop.getBoundingClientRect();
+  if (pr.right > window.innerWidth - 8) {
+    pop.style.left = (window.innerWidth - pr.width - 8 + window.scrollX) + 'px';
+  }
+  guardiasEditCell = { overlay, pop };
+}
+
+function cerrarGuardiaPop() {
+  if (guardiasEditCell) {
+    guardiasEditCell.overlay.remove();
+    guardiasEditCell.pop.remove();
+    guardiasEditCell = null;
+  }
+}
+
+async function setGuardia(fecha, sucursal, vendedor, estado) {
+  cerrarGuardiaPop();
+  const k = fecha + '|' + sucursal + '|' + vendedor;
+  const prev = guardiasOverrides.has(k) ? guardiasOverrides.get(k) : undefined;
+  guardiasOverrides.set(k, estado);
+  drawGuardias();
+  const status = document.getElementById('guardiasStatus');
+  if (status) status.textContent = 'Guardando…';
+  try {
+    await saveGuardia(fecha, sucursal, vendedor, estado);
+    const st = document.getElementById('guardiasStatus');
+    if (st) st.textContent = 'Guardado ✓ ' + new Date().toLocaleTimeString('es-AR');
+  } catch (e) {
+    console.error('Guardar guardia:', e);
+    if (prev === undefined) guardiasOverrides.delete(k); else guardiasOverrides.set(k, prev);
+    drawGuardias();
+    const st = document.getElementById('guardiasStatus');
+    if (st) st.textContent = '⚠️ No se pudo guardar: ' + (e.message || e);
+  }
+}
+
+// Helpers de fecha para el cronograma
+function cap(s) { s = String(s || '').toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); }
+function _gd(f) { const p = String(f).split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); }
+function dowNum(f) { return _gd(f).getDay(); }
+function dowName(f) { return ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][_gd(f).getDay()]; }
+function fechaDM(f) { const p = String(f).split('-'); return p[2] + '/' + p[1]; }
+function mesLabel(ym) {
+  const p = ym.split('-').map(Number);
+  const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  return meses[p[1] - 1] + ' ' + p[0];
+}
+function diasConsecutivos(a, b) { return (_gd(b) - _gd(a)) === 86400000; }
 
 function fmtDateKey(d) {
   const y = d.getFullYear();
