@@ -605,6 +605,24 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .personal-item.nov-hoy { background: #E0F2FE; }
 .nov-ico { margin-right: 2px; }
 
+/* ===== Reportes ===== */
+.rep-controls { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.rep-range { display: flex; gap: 12px; flex-wrap: wrap; }
+.rep-range label { font-size: 12px; color: var(--vw-grey-4); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.rep-range input[type="date"] { font-family: var(--font); font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--vw-grey-2); outline: none; }
+.rep-range input[type="date"]:focus { border-color: var(--vw-blue); }
+.rep-quick { display: flex; gap: 8px; }
+.rep-area { display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.3px; vertical-align: middle; }
+.rep-area.ventas  { background: #DBEAFE; color: #1E40AF; }
+.rep-area.general { background: var(--vw-grey-2); color: var(--vw-grey-4); }
+.rep-row { cursor: pointer; }
+.rep-row:hover { background: var(--vw-grey-1); }
+.rep-toggle { color: var(--vw-grey-3); font-size: 11px; text-align: right; }
+.rep-detail-row td { background: var(--vw-grey-1); padding: 8px 12px; }
+.rep-det { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: var(--vw-grey-4); flex-wrap: wrap; }
+.rep-det-ico { font-size: 12px; }
+.rep-det-txt { color: var(--vw-black); }
+
 /* ===== Calendario / agenda de guardias ===== */
 .gcal-month {
   background: white; border-radius: var(--radius);
@@ -742,12 +760,16 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
       <div class="subtabs">
         <button class="subtab active" data-sub="novedades" onclick="setPersonalSub('novedades')">Novedades</button>
         <button class="subtab" data-sub="guardias" onclick="setPersonalSub('guardias')">Guardias Ventas</button>
+        <button class="subtab" data-sub="reportes" id="subtabReportes" onclick="setPersonalSub('reportes')">Reportes</button>
       </div>
       <div class="subpanel active" id="subNovedades">
         <div id="personalContent"></div>
       </div>
       <div class="subpanel" id="subGuardias">
         <div id="guardiasContent"></div>
+      </div>
+      <div class="subpanel" id="subReportes">
+        <div id="reportesContent"></div>
       </div>
     </section>
 
@@ -874,10 +896,15 @@ function enterApp(session) {
     t.classList.toggle('hidden', !permitidas.includes(t.dataset.tab));
   });
 
+  // La sub-pestaña Reportes es sólo para admins (Mariano no la ve)
+  const esAdmin = ADMIN_USERS.includes(session.usuario);
+  const subRep = document.getElementById('subtabReportes');
+  if (subRep) subRep.classList.toggle('hidden', !esAdmin);
+
   const primera = permitidas[0] || 'compras';
   setTab(primera);
   // Usuario restringido que sólo ve Personal → abrir directo en Guardias Ventas
-  if (primera === 'personal' && !ADMIN_USERS.includes(session.usuario)) {
+  if (primera === 'personal' && !esAdmin) {
     setPersonalSub('guardias');
   }
 }
@@ -915,11 +942,12 @@ function setTab(tab) {
 function setPersonalSub(sub) {
   document.querySelectorAll('.subtab').forEach(t => t.classList.toggle('active', t.dataset.sub === sub));
   document.querySelectorAll('.subpanel').forEach(p => p.classList.remove('active'));
-  const map = { novedades: 'subNovedades', guardias: 'subGuardias' };
+  const map = { novedades: 'subNovedades', guardias: 'subGuardias', reportes: 'subReportes' };
   const el = document.getElementById(map[sub]);
   if (el) el.classList.add('active');
   if (sub === 'novedades') ensureInforme(renderPersonal);
   if (sub === 'guardias')  renderGuardias();
+  if (sub === 'reportes')  renderReportes();
 }
 
 // =======================================================================
@@ -935,6 +963,8 @@ async function loadInforme(forzar) {
     const data = await res.json();
     if (data && data.error) throw new Error(data.error);
     lastInforme = data;
+    // Acumular las novedades del personal general (Sheet) en Supabase (dedup).
+    snapshotNovedadesGenerales(data.personal);
     const upd = document.getElementById('updatedAtInforme');
     if (upd && data.updatedAt) upd.textContent = 'Actualizado: ' + new Date(data.updatedAt).toLocaleString('es-AR');
     // re-renderizar la solapa activa si aplica
@@ -2422,6 +2452,186 @@ function diasConsecutivos(a, b) { return (_gd(b) - _gd(a)) === 86400000; }
 function hoyISO() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// =======================================================================
+// NOVEDADES · acumulación del personal general (Sheet) en Supabase
+// =======================================================================
+function clasificarTipoNovedad(seccion) {
+  const s = String(seccion || '').toLowerCase();
+  if (/tarde/.test(s)) return 'llegada_tarde';
+  if (/ausent|falt/.test(s)) return 'falta';
+  return 'otro';
+}
+
+async function snapshotNovedadesGenerales(personal) {
+  if (!Array.isArray(personal) || !personal.length) return;
+  let seccion = '';
+  const eventos = [];
+  personal.forEach(r => {
+    if (r.tipo === 'header')  { seccion = ''; return; }
+    if (r.tipo === 'subhead') { seccion = String(r.texto || '').trim(); return; }
+    if (r.tipo !== 'item') return;
+    const texto = String(r.texto || '').trim();
+    if (!texto) return;
+    const tipo = clasificarTipoNovedad(seccion);
+    const d = parseFechaCorta(r.fecha);
+    const fechaISO = d ? fmtDateKey(d) : hoyISO();
+    const dedup = [fechaISO, 'general', tipo, texto.toLowerCase()].join('|');
+    eventos.push({
+      fecha: fechaISO, area: 'general', tipo, persona: texto,
+      detalle: String(r.fecha || '').trim() || null, origen: 'sheet', dedup_key: dedup,
+    });
+  });
+  if (!eventos.length) return;
+  try {
+    await sbFetch('saldos_novedades?on_conflict=dedup_key', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=ignore-duplicates,return=minimal' },
+      body: JSON.stringify(eventos),
+    });
+  } catch (e) { console.error('snapshot novedades:', e); }
+}
+
+// =======================================================================
+// REPORTES · faltas y llegadas tarde por persona (ventas + general)
+// =======================================================================
+let reportesGeneral = null;       // filas de saldos_novedades
+let reportesDesde = '';
+let reportesHasta = '';
+let reportesOpen = new Set();
+
+async function renderReportes() {
+  const wrap = document.getElementById('reportesContent');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando reportes...</div></div>';
+  // Ventas: necesitamos las guardias cargadas
+  if (!guardiasLoaded && !guardiasSinTabla) { try { await loadGuardiasOverrides(); } catch (e) {} }
+  // General: acumulado del Sheet
+  try {
+    reportesGeneral = await sbFetch('saldos_novedades?select=fecha,area,tipo,persona,detalle,origen&order=fecha.desc');
+  } catch (e) { console.error('reportes general:', e); reportesGeneral = []; }
+  drawReportes();
+}
+
+function reportesEventos() {
+  const evs = [];
+  if (guardiasOverrides) {
+    guardiasOverrides.forEach((info, key) => {
+      const parts = key.split('|');
+      const fecha = parts[0], sucursal = parts[1], vendedor = parts[2];
+      if (info.estado === 'falta') {
+        evs.push({ fecha, persona: cap(vendedor), area: 'ventas', tipo: 'falta', detalle: info.motivo || '', extra: sucursal });
+      }
+      if (info.llegadaTarde) {
+        evs.push({ fecha, persona: cap(vendedor), area: 'ventas', tipo: 'llegada_tarde', detalle: info.llegadaTarde, extra: sucursal });
+      }
+    });
+  }
+  (reportesGeneral || []).forEach(r => {
+    if (r.tipo !== 'falta' && r.tipo !== 'llegada_tarde') return;
+    evs.push({ fecha: r.fecha, persona: String(r.persona || '').trim(), area: r.area || 'general', tipo: r.tipo, detalle: r.detalle || '', extra: '' });
+  });
+  return evs;
+}
+
+function reportesEnRango(fecha) {
+  if (!fecha) return false;
+  if (reportesDesde && fecha < reportesDesde) return false;
+  if (reportesHasta && fecha > reportesHasta) return false;
+  return true;
+}
+
+function setReportesDesde(v) { reportesDesde = v || ''; drawReportes(); }
+function setReportesHasta(v) { reportesHasta = v || ''; drawReportes(); }
+function setReportesMesActual() {
+  const h = hoyISO();
+  reportesDesde = h.slice(0, 8) + '01';
+  reportesHasta = h;
+  drawReportes();
+}
+function setReportesTodo() { reportesDesde = ''; reportesHasta = ''; drawReportes(); }
+function toggleReportePersona(k) {
+  if (reportesOpen.has(k)) reportesOpen.delete(k); else reportesOpen.add(k);
+  drawReportes();
+}
+
+function drawReportes() {
+  const wrap = document.getElementById('reportesContent');
+  if (!wrap) return;
+  const evs = reportesEventos().filter(e => reportesEnRango(e.fecha));
+
+  const porPersona = new Map();
+  evs.forEach(e => {
+    const k = e.persona.toLowerCase();
+    if (!porPersona.has(k)) porPersona.set(k, { key: k, nombre: e.persona, areas: new Set(), faltas: [], tardes: [] });
+    const g = porPersona.get(k);
+    g.areas.add(e.area);
+    if (e.tipo === 'falta') g.faltas.push(e); else g.tardes.push(e);
+  });
+  const arr = Array.from(porPersona.values()).sort((a, b) =>
+    (b.faltas.length + b.tardes.length) - (a.faltas.length + a.tardes.length) || a.nombre.localeCompare(b.nombre));
+
+  const totFaltas = evs.filter(e => e.tipo === 'falta').length;
+  const totTardes = evs.filter(e => e.tipo === 'llegada_tarde').length;
+
+  const controls = `
+    <div class="rep-controls">
+      <div class="rep-range">
+        <label>Desde <input type="date" value="${escapeHtml(reportesDesde)}" onchange="setReportesDesde(this.value)"></label>
+        <label>Hasta <input type="date" value="${escapeHtml(reportesHasta)}" onchange="setReportesHasta(this.value)"></label>
+      </div>
+      <div class="rep-quick">
+        <button class="filter-btn" onclick="setReportesMesActual()">Este mes</button>
+        <button class="filter-btn ${(!reportesDesde && !reportesHasta) ? 'active' : ''}" onclick="setReportesTodo()">Todo</button>
+      </div>
+    </div>
+    <div class="cards">
+      <div class="card bad"><div class="label">Faltas</div><div class="value">${totFaltas}</div><div class="sub">en el período</div></div>
+      <div class="card warn"><div class="label">Llegadas tarde</div><div class="value">${totTardes}</div><div class="sub">en el período</div></div>
+      <div class="card"><div class="label">Personas con novedades</div><div class="value">${arr.length}</div><div class="sub">ventas + general</div></div>
+    </div>`;
+
+  if (!arr.length) {
+    wrap.innerHTML = controls + `<div class="empty"><div class="ico">📊</div>
+      <div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin faltas ni llegadas tarde en el período</div>
+      <div style="font-size:12px;color:var(--vw-grey-3);margin-top:6px">Se va acumulando con las guardias de ventas y las novedades del Sheet.</div></div>`;
+    return;
+  }
+
+  const rows = arr.map(g => {
+    const open = reportesOpen.has(g.key);
+    const areaTags = Array.from(g.areas).map(a => `<span class="rep-area ${a}">${a === 'ventas' ? 'Ventas' : 'General'}</span>`).join(' ');
+    const det = !open ? '' : `
+      <tr class="rep-detail-row"><td colspan="4">
+        ${[...g.faltas.map(e => ['falta', e]), ...g.tardes.map(e => ['tarde', e])]
+          .sort((a, b) => b[1].fecha.localeCompare(a[1].fecha))
+          .map(([t, e]) => `<div class="rep-det">
+            <span class="rep-det-ico">${t === 'falta' ? '⚠️' : '⏰'}</span>
+            <span>${dowName(e.fecha)} ${fechaDM(e.fecha)}</span>
+            <span class="rep-area ${e.area}">${e.area === 'ventas' ? 'Ventas' : 'General'}</span>
+            <span class="rep-det-txt">${escapeHtml(t === 'falta' ? ('Falta' + (e.detalle ? ': ' + e.detalle : '')) : ('Llegó tarde ' + (e.detalle || '')))}</span>
+          </div>`).join('')}
+      </td></tr>`;
+    return `
+      <tr class="rep-row" onclick="toggleReportePersona('${escapeHtml(g.key)}')">
+        <td><strong>${escapeHtml(g.nombre)}</strong> ${areaTags}</td>
+        <td class="num">${g.faltas.length}</td>
+        <td class="num">${g.tardes.length}</td>
+        <td class="rep-toggle">${open ? '▲' : '▼'}</td>
+      </tr>${det}`;
+  }).join('');
+
+  wrap.innerHTML = controls + `
+    <div class="table-wrap">
+      <div class="table-head"><h3>Por persona</h3><span class="count">${arr.length} persona${arr.length === 1 ? '' : 's'} · tocá para ver el detalle</span></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Persona</th><th class="num">Faltas</th><th class="num">Tardes</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 function fmtDateKey(d) {

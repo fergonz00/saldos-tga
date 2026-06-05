@@ -333,3 +333,80 @@ function toNumber(v) {
   }
   return isNaN(n) ? 0 : n;
 }
+
+// =======================================================================
+// NOVEDADES · snapshot diario del personal general → Supabase (acumulación)
+// =======================================================================
+// Guarda las novedades del personal (Ausentes / Tarde) de la hoja INFORME en
+// la tabla saldos_novedades de Supabase, para poder sacar reportes históricos.
+// Idempotente: dedup_key evita duplicar en corridas repetidas.
+//
+// SETUP (una sola vez): correr instalarTriggerNovedades() desde el editor.
+//   Asegurate que el proyecto tenga timezone Argentina (Configuración del proyecto).
+const SUPABASE_URL_NOV  = 'https://wjfglsafgaltusmbnccl.supabase.co';
+const SUPABASE_ANON_NOV = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqZmdsc2FmZ2FsdHVzbWJuY2NsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MzM2OTksImV4cCI6MjA4OTAwOTY5OX0.OOwgyKDNQsbBaGDaL0OhJfc8eOsCClvvAPW0VFBKrOA';
+
+function snapshotNovedades() {
+  const inf = getInforme();
+  const personal = (inf && inf.personal) || [];
+  let seccion = '';
+  const eventos = [];
+  personal.forEach(function (r) {
+    if (r.tipo === 'header')  { seccion = ''; return; }
+    if (r.tipo === 'subhead') { seccion = String(r.texto || '').trim(); return; }
+    if (r.tipo !== 'item') return;
+    const texto = String(r.texto || '').trim();
+    if (!texto) return;
+    const tipo = _tipoNovedad(seccion);
+    const fechaISO = _fechaNovedadISO(r.fecha);
+    eventos.push({
+      fecha: fechaISO, area: 'general', tipo: tipo, persona: texto,
+      detalle: String(r.fecha || '').trim() || null, origen: 'sheet',
+      dedup_key: [fechaISO, 'general', tipo, texto.toLowerCase()].join('|'),
+    });
+  });
+  if (!eventos.length) return 0;
+  const res = UrlFetchApp.fetch(SUPABASE_URL_NOV + '/rest/v1/saldos_novedades?on_conflict=dedup_key', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'apikey': SUPABASE_ANON_NOV,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_NOV,
+      'Prefer': 'resolution=ignore-duplicates,return=minimal',
+    },
+    payload: JSON.stringify(eventos),
+    muteHttpExceptions: true,
+  });
+  Logger.log('snapshotNovedades: ' + eventos.length + ' eventos · HTTP ' + res.getResponseCode());
+  return eventos.length;
+}
+
+function _tipoNovedad(seccion) {
+  const s = String(seccion || '').toLowerCase();
+  if (s.indexOf('tarde') > -1) return 'llegada_tarde';
+  if (/ausent|falt/.test(s)) return 'falta';
+  return 'otro';
+}
+
+function _fechaNovedadISO(f) {
+  const hoy = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  if (!f) return hoy;
+  const s = String(f).trim();
+  var m = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (m) {
+    var d = ('0' + m[1]).slice(-2), mo = ('0' + m[2]).slice(-2);
+    var y = m[3] ? (m[3].length === 2 ? '20' + m[3] : m[3]) : String(new Date().getFullYear());
+    return y + '-' + mo + '-' + d;
+  }
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) return s;
+  return hoy;
+}
+
+// Correr UNA vez para programar el chequeo diario ~16:00 (hora del proyecto).
+function instalarTriggerNovedades() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'snapshotNovedades') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('snapshotNovedades').timeBased().everyDays(1).atHour(16).create();
+  Logger.log('Trigger diario instalado: snapshotNovedades ~16hs.');
+}
