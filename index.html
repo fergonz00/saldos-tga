@@ -545,11 +545,29 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .g-chip.vacaciones { background: #DBEAFE;            color: #1E40AF; }
 .g-chip.curso      { background: var(--orange-soft); color: #92400E; }
 .g-chip.falta      { background: var(--red-soft);    color: #991B1B; }
+.g-chip.reemplazo  { background: #EDE9FE;            color: #5B21B6; }
+.g-chip.compensa   { background: #CFFAFE;            color: #155E75; }
 .dot.trabaja    { background: var(--green-soft);  border: 1px solid #6EE7B7; }
 .dot.franco     { background: var(--vw-grey-2); }
 .dot.vacaciones { background: #DBEAFE;            border: 1px solid #93C5FD; }
 .dot.curso      { background: var(--orange-soft); border: 1px solid #FCD34D; }
 .dot.falta      { background: var(--red-soft);    border: 1px solid #FCA5A5; }
+.dot.reemplazo  { background: #EDE9FE;            border: 1px solid #C4B5FD; }
+.dot.compensa   { background: #CFFAFE;            border: 1px solid #67E8F9; }
+
+/* Balance de créditos de reemplazo */
+.guardias-balance {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-bottom: 14px; font-size: 12px; color: var(--vw-grey-4);
+}
+.guardias-balance .gb-lbl { font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; font-size: 11px; }
+.gb-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 100px; font-size: 12px; font-weight: 700;
+  background: var(--vw-grey-1); color: var(--vw-grey-4); border: 1px solid var(--vw-grey-2);
+}
+.gb-chip.pos { background: var(--green-soft); color: #065F46; border-color: #6EE7B7; }
+.gb-chip.neg { background: var(--red-soft);   color: #991B1B; border-color: #FCA5A5; }
 
 /* Popover selector de estado */
 .g-pop-overlay { position: fixed; inset: 0; z-index: 200; }
@@ -581,6 +599,7 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .g-motivo-chip { font-size: 11px; padding: 4px 9px; border-radius: 100px; background: var(--vw-grey-1); color: var(--vw-grey-4); font-weight: 600; border: 1px solid var(--vw-grey-2); }
 .g-motivo-chip:hover { background: var(--vw-grey-2); }
 .g-motivo-chip.sel { background: var(--red-soft); color: #991B1B; border-color: #FCA5A5; }
+.g-motivo-chips.reempl .g-motivo-chip.sel { background: #EDE9FE; color: #5B21B6; border-color: #C4B5FD; }
 .g-pop-input { width: 100%; font-family: var(--font); font-size: 13px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--vw-grey-2); outline: none; }
 .g-pop-input:focus { border-color: var(--vw-blue); }
 .g-tarde-row { display: flex; align-items: center; gap: 8px; }
@@ -661,6 +680,8 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .gname.vacaciones { background: #DBEAFE;            color: #1E40AF; }
 .gname.curso      { background: var(--orange-soft); color: #92400E; }
 .gname.falta      { background: var(--red-soft);    color: #991B1B; }
+.gname.reemplazo  { background: #EDE9FE;            color: #5B21B6; }
+.gname.compensa   { background: #CFFAFE;            color: #155E75; }
 
 .guardias-ausentes {
   background: white; border-radius: var(--radius);
@@ -683,6 +704,8 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .ga-tag.vacaciones { background: #DBEAFE; color: #1E40AF; }
 .ga-tag.falta      { background: var(--red-soft); color: #991B1B; }
 .ga-tag.curso      { background: var(--orange-soft); color: #92400E; }
+.ga-tag.reemplazo  { background: #EDE9FE; color: #5B21B6; }
+.ga-tag.compensa   { background: #CFFAFE; color: #155E75; }
 </style>
 </head>
 <body>
@@ -814,7 +837,13 @@ const GUARDIAS_ESTADOS = {
   vacaciones: { code: 'v', label: 'Vacaciones', ab: 'Vac' },
   curso:      { code: 'c', label: 'Curso',      ab: 'Curso' },
   falta:      { code: 'x', label: 'Falta',      ab: 'Falta' },
+  // Reemplazo: otro vendedor (de cualquier salón) cubre esta guardia → cubierto_por.
+  // Compensa: no viene usando el crédito de un reemplazo/día extra que hizo antes.
+  reemplazo:  { code: 'r', label: 'Reemplazo',  ab: 'Reempl' },
+  compensa:   { code: 'p', label: 'Compensa',   ab: 'Comp' },
 };
+// Todos los vendedores (para elegir quién cubre un reemplazo)
+const GUARDIAS_VENDEDORES_ALL = GUARDIAS_SUCURSALES.flatMap(s => s.vendedores);
 const GUARDIAS_CODE2EST = Object.fromEntries(
   Object.entries(GUARDIAS_ESTADOS).map(([est, v]) => [v.code, est])
 );
@@ -2041,6 +2070,14 @@ function renderNovedadesGuardias() {
       items.push({ fecha, tipo: 'falta', vendedor, sucursal,
         txt: `${cap(vendedor)} (${sucursal}) — Falta${info.motivo ? ': ' + info.motivo : ''}` });
     }
+    if (info.estado === 'reemplazo' && info.cubiertoPor) {
+      items.push({ fecha, tipo: 'reemplazo', vendedor, sucursal,
+        txt: `${cap(info.cubiertoPor)} cubre a ${cap(vendedor)} (${sucursal})` });
+    }
+    if (info.estado === 'compensa') {
+      items.push({ fecha, tipo: 'compensa', vendedor, sucursal,
+        txt: `${cap(vendedor)} (${sucursal}) — Compensa (usa crédito de reemplazo)` });
+    }
     if (info.llegadaTarde) {
       items.push({ fecha, tipo: 'tarde', vendedor, sucursal,
         txt: `${cap(vendedor)} (${sucursal}) — Llegó tarde ${info.llegadaTarde}` });
@@ -2048,9 +2085,10 @@ function renderNovedadesGuardias() {
   });
   if (!items.length) return '';
   items.sort((a, b) => b.fecha.localeCompare(a.fecha) || a.vendedor.localeCompare(b.vendedor));
+  const NOV_ICONS = { falta: '⚠️', tarde: '⏰', reemplazo: '🔁', compensa: '🔄' };
   const rows = items.map(it => `
     <div class="personal-item ${it.fecha === hoy ? 'nov-hoy' : ''}">
-      <span class="p-txt"><span class="nov-ico ${it.tipo}">${it.tipo === 'falta' ? '⚠️' : '⏰'}</span> ${escapeHtml(it.txt)}</span>
+      <span class="p-txt"><span class="nov-ico ${it.tipo}">${NOV_ICONS[it.tipo] || '📌'}</span> ${escapeHtml(it.txt)}</span>
       <span class="p-date">${dowName(it.fecha)} ${fechaDM(it.fecha)}${it.fecha === hoy ? ' · HOY' : ''}</span>
     </div>`).join('');
   return `<div class="personal-header-main">📋 Novedades de guardias de hoy</div>${rows}`;
@@ -2079,19 +2117,50 @@ function buildGuardiasBase() {
   return guardiasBaseMap;
 }
 
-// Info completa de una celda: { estado, motivo, llegadaTarde }
+// Info completa de una celda: { estado, motivo, llegadaTarde, cubiertoPor }
 function guardiaInfo(fecha, sucursal, vendedor) {
   const k = fecha + '|' + sucursal + '|' + vendedor;
   if (guardiasOverrides.has(k)) {
     const o = guardiasOverrides.get(k);
-    return { estado: o.estado, motivo: o.motivo || '', llegadaTarde: o.llegadaTarde || '' };
+    return { estado: o.estado, motivo: o.motivo || '', llegadaTarde: o.llegadaTarde || '', cubiertoPor: o.cubiertoPor || '' };
   }
   const base = buildGuardiasBase()[fecha];
   const est = (base && base[sucursal] && base[sucursal][vendedor]) || 'franco';
-  return { estado: est, motivo: '', llegadaTarde: '' };
+  return { estado: est, motivo: '', llegadaTarde: '', cubiertoPor: '' };
 }
 function guardiaEstado(fecha, sucursal, vendedor) {
   return guardiaInfo(fecha, sucursal, vendedor).estado;
+}
+
+// Balance de créditos de reemplazo por vendedor (sale solo de los overrides):
+//   +1 cubrir la guardia de otro (figura como cubierto_por de un Reemplazo)
+//   +1 trabajar un día que en la base le tocaba franco (día extra propio)
+//   −1 cada "Compensa" (franco compensatorio usando ese crédito)
+function guardiasBalance() {
+  const bal = {};
+  const add = (v, n) => { v = String(v || '').toUpperCase(); if (v) bal[v] = (bal[v] || 0) + n; };
+  guardiasOverrides.forEach((info, key) => {
+    const parts = key.split('|');
+    const fecha = parts[0], sucursal = parts[1], vendedor = parts[2];
+    if (info.estado === 'reemplazo' && info.cubiertoPor) add(info.cubiertoPor, +1);
+    if (info.estado === 'compensa') add(vendedor, -1);
+    if (info.estado === 'trabaja') {
+      const base = buildGuardiasBase()[fecha];
+      const baseEst = base && base[sucursal] && base[sucursal][vendedor];
+      if (baseEst === 'franco') add(vendedor, +1);
+    }
+  });
+  return bal;
+}
+
+function renderGuardiasBalance() {
+  const bal = guardiasBalance();
+  const entries = Object.entries(bal).filter(([, n]) => n !== 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  if (!entries.length) return '';
+  const chips = entries.map(([v, n]) =>
+    `<span class="gb-chip ${n > 0 ? 'pos' : 'neg'}">${escapeHtml(cap(v))} ${n > 0 ? '+' + n : n}</span>`).join('');
+  return `<div class="guardias-balance"><span class="gb-lbl">Créditos de reemplazo:</span>${chips}</div>`;
 }
 
 function puedeEditarGuardias() {
@@ -2100,22 +2169,23 @@ function puedeEditarGuardias() {
 }
 
 async function loadGuardiasOverrides() {
-  const data = await sbFetch('saldos_guardias?select=fecha,sucursal,vendedor,estado,motivo,llegada_tarde');
+  const data = await sbFetch('saldos_guardias?select=fecha,sucursal,vendedor,estado,motivo,llegada_tarde,cubierto_por');
   guardiasOverrides = new Map();
   (data || []).forEach(r => {
     guardiasOverrides.set(r.fecha + '|' + r.sucursal + '|' + r.vendedor, {
-      estado: r.estado, motivo: r.motivo || '', llegadaTarde: r.llegada_tarde || '',
+      estado: r.estado, motivo: r.motivo || '', llegadaTarde: r.llegada_tarde || '', cubiertoPor: r.cubierto_por || '',
     });
   });
   guardiasLoaded = true;
 }
 
-async function saveGuardia(fecha, sucursal, vendedor, estado, motivo, llegadaTarde) {
+async function saveGuardia(fecha, sucursal, vendedor, estado, motivo, llegadaTarde, cubiertoPor) {
   const sess = getSharedCookie() || {};
   const body = JSON.stringify([{
     fecha, sucursal, vendedor, estado,
     motivo: motivo || null,
     llegada_tarde: llegadaTarde || null,
+    cubierto_por: cubiertoPor || null,
     updated_by: sess.usuario || '',
   }]);
   await sbFetch('saldos_guardias?on_conflict=fecha,sucursal,vendedor', {
@@ -2201,6 +2271,7 @@ function drawGuardias() {
     </div>
     <div class="g-status" id="guardiasStatus"></div>
     <div class="guardias-legend">${legend}</div>
+    ${renderGuardiasBalance()}
     ${ausencias}
     ${bloques}
   `;
@@ -2241,12 +2312,18 @@ function renderGuardiaDiaCell(fecha, dia, editable) {
       const info = guardiaInfo(fecha, suc.nombre, v);
       const meta = GUARDIAS_ESTADOS[info.estado] || GUARDIAS_ESTADOS.franco;
       let tip = cap(v) + ' · ' + meta.label;
+      let nombre = escapeHtml(cap(v));
       if (info.estado === 'falta' && info.motivo) tip += ': ' + info.motivo;
+      if (info.estado === 'reemplazo' && info.cubiertoPor) {
+        tip = cap(info.cubiertoPor) + ' cubre a ' + cap(v);
+        nombre = escapeHtml(cap(v)) + '→<strong>' + escapeHtml(cap(info.cubiertoPor)) + '</strong>';
+      }
+      if (info.estado === 'compensa') tip = cap(v) + ' · Compensa (usa crédito de reemplazo)';
       let extra = '';
       if (info.llegadaTarde) { tip += ' · llegó tarde ' + info.llegadaTarde; extra = ` <span class="gname-tarde">⏰${escapeHtml(info.llegadaTarde)}</span>`; }
       const cls = 'gname ' + info.estado + (editable ? ' editable' : '');
       const oc = editable ? `onclick="abrirGuardiaPop(event,'${fecha}','${escapeHtml(suc.nombre)}','${v}')"` : '';
-      return `<span class="${cls}" ${oc} title="${escapeHtml(tip)}">${escapeHtml(cap(v))}${extra}</span>`;
+      return `<span class="${cls}" ${oc} title="${escapeHtml(tip)}">${nombre}${extra}</span>`;
     }).join('');
     return `<div class="gcal-suc">
       <div class="gcal-suc-lbl">${escapeHtml(suc.nombre)}</div>
@@ -2262,9 +2339,10 @@ function renderGuardiaDiaCell(fecha, dia, editable) {
 function renderGuardiaAusencias(fechas) {
   const raw = [];
   fechas.forEach(f => GUARDIAS_SUCURSALES.forEach(suc => suc.vendedores.forEach(v => {
-    const est = guardiaEstado(f, suc.nombre, v);
-    if (est === 'vacaciones' || est === 'falta' || est === 'curso') {
-      raw.push({ fecha: f, vendedor: v, sucursal: suc.nombre, estado: est });
+    const info = guardiaInfo(f, suc.nombre, v);
+    const est = info.estado;
+    if (est === 'vacaciones' || est === 'falta' || est === 'curso' || est === 'reemplazo' || est === 'compensa') {
+      raw.push({ fecha: f, vendedor: v, sucursal: suc.nombre, estado: est, cubierto: info.cubiertoPor || '' });
     }
   })));
   if (!raw.length) return '';
@@ -2277,8 +2355,9 @@ function renderGuardiaAusencias(fechas) {
     if (last && last.vendedor === it.vendedor && last.sucursal === it.sucursal &&
         last.estado === it.estado && diasConsecutivos(last.hasta, it.fecha)) {
       last.hasta = it.fecha;
+      if (it.cubierto) last.cubierto = it.cubierto;
     } else {
-      groups.push({ vendedor: it.vendedor, sucursal: it.sucursal, estado: it.estado, desde: it.fecha, hasta: it.fecha });
+      groups.push({ vendedor: it.vendedor, sucursal: it.sucursal, estado: it.estado, desde: it.fecha, hasta: it.fecha, cubierto: it.cubierto || '' });
     }
   });
   // Sólo lo vigente HOY: ni faltas de días anteriores ni vacaciones que todavía
@@ -2290,9 +2369,11 @@ function renderGuardiaAusencias(fechas) {
     const rango = g.desde === g.hasta
       ? `${dowName(g.desde)} ${fechaDM(g.desde)}`
       : `${dowName(g.desde)} ${fechaDM(g.desde)} → ${dowName(g.hasta)} ${fechaDM(g.hasta)}`;
+    const cubre = (g.estado === 'reemplazo' && g.cubierto)
+      ? ` <span style="font-size:12px;color:var(--vw-grey-4)">· lo cubre <strong>${escapeHtml(cap(g.cubierto))}</strong></span>` : '';
     return `<div class="ga-item">
       <span><strong>${escapeHtml(cap(g.vendedor))}</strong> · ${escapeHtml(g.sucursal)}
-        <span class="ga-tag ${g.estado}">${escapeHtml(GUARDIAS_ESTADOS[g.estado].label)}</span></span>
+        <span class="ga-tag ${g.estado}">${escapeHtml(GUARDIAS_ESTADOS[g.estado].label)}</span>${cubre}</span>
       <span class="ga-when">${rango}</span>
     </div>`;
   }).join('');
@@ -2319,6 +2400,7 @@ function abrirGuardiaPop(ev, fecha, sucursal, vendedor) {
   guardiasEditCell = {
     fecha, sucursal, vendedor,
     estado: info.estado, motivo: info.motivo, llegadaTarde: info.llegadaTarde,
+    cubiertoPor: info.cubiertoPor,
     overlay, pop, anchorRect: ev.currentTarget.getBoundingClientRect(),
   };
   repintarPop();
@@ -2372,6 +2454,23 @@ function renderGuardiaPopBody() {
         ${e.llegadaTarde ? '<button type="button" class="g-tarde-clear" onclick="setPopTarde(\'\')">Quitar</button>' : ''}
       </div>
       <div class="g-pop-hint">Si llegó tarde igual queda como "Trabaja".</div>`;
+  } else if (e.estado === 'reemplazo') {
+    const candidatos = GUARDIAS_VENDEDORES_ALL.filter(v => v !== e.vendedor);
+    const chips = candidatos.map(v =>
+      `<button type="button" class="g-motivo-chip ${e.cubiertoPor === v ? 'sel' : ''}" onclick="setPopCubierto('${v}')">${escapeHtml(cap(v))}</button>`).join('');
+    extra = `
+      <div class="g-pop-sec">¿Quién lo cubre?</div>
+      <div class="g-motivo-chips reempl">${chips}</div>
+      <div class="g-pop-hint">Puede ser de cualquier salón. El que cubre suma +1 crédito de reemplazo.</div>`;
+  } else if (e.estado === 'compensa') {
+    // Balance SIN contar esta celda (si ya estaba guardada como compensa, la neutralizo)
+    let b = guardiasBalance()[String(e.vendedor).toUpperCase()] || 0;
+    const k = e.fecha + '|' + e.sucursal + '|' + e.vendedor;
+    const prev = guardiasOverrides.get(k);
+    if (prev && prev.estado === 'compensa') b += 1;
+    extra = b > 0
+      ? `<div class="g-pop-hint">✓ ${escapeHtml(cap(e.vendedor))} tiene ${b} crédito${b === 1 ? '' : 's'} a favor. Este día usa 1 y no cuenta como falta.</div>`
+      : `<div class="g-pop-hint" style="color:var(--orange);font-weight:600">⚠️ ${escapeHtml(cap(e.vendedor))} no tiene crédito a favor (balance ${b}). Se puede guardar igual, pero queda en negativo.</div>`;
   }
   return `
     <div class="g-pop-head">${escapeHtml(cap(e.vendedor))} · ${escapeHtml(e.sucursal)}
@@ -2391,17 +2490,20 @@ function setPopEstado(est) {
   guardiasEditCell.estado = est;
   if (est !== 'falta') guardiasEditCell.motivo = '';
   if (est !== 'trabaja') guardiasEditCell.llegadaTarde = '';
+  if (est !== 'reemplazo') guardiasEditCell.cubiertoPor = '';
   repintarPop();
 }
 function setPopMotivo(m) { guardiasEditCell.motivo = m; repintarPop(); }
 function setPopMotivoInput(v) { guardiasEditCell.motivo = v; }  // sin repintar: conserva el foco
 function setPopTarde(v) { guardiasEditCell.llegadaTarde = v; repintarPop(); }
+function setPopCubierto(v) { guardiasEditCell.cubiertoPor = v; repintarPop(); }
 
 async function guardarGuardia() {
   const e = guardiasEditCell;
   if (!e) return;
   const motivo = e.estado === 'falta' ? String(e.motivo || '').trim() : '';
   const llegada = e.estado === 'trabaja' ? String(e.llegadaTarde || '').trim() : '';
+  const cubierto = e.estado === 'reemplazo' ? String(e.cubiertoPor || '').trim() : '';
   if (e.estado === 'falta' && !motivo) {
     const err = document.getElementById('gPopErr');
     if (err) err.textContent = 'Poné el motivo de la falta.';
@@ -2409,16 +2511,21 @@ async function guardarGuardia() {
     if (inp) inp.focus();
     return;
   }
+  if (e.estado === 'reemplazo' && !cubierto) {
+    const err = document.getElementById('gPopErr');
+    if (err) err.textContent = 'Elegí quién cubre la guardia.';
+    return;
+  }
   const fecha = e.fecha, sucursal = e.sucursal, vendedor = e.vendedor, estado = e.estado;
   const k = fecha + '|' + sucursal + '|' + vendedor;
   const prev = guardiasOverrides.has(k) ? guardiasOverrides.get(k) : undefined;
-  guardiasOverrides.set(k, { estado, motivo, llegadaTarde: llegada });
+  guardiasOverrides.set(k, { estado, motivo, llegadaTarde: llegada, cubiertoPor: cubierto });
   cerrarGuardiaPop();
   drawGuardias();
   const status = document.getElementById('guardiasStatus');
   if (status) status.textContent = 'Guardando…';
   try {
-    await saveGuardia(fecha, sucursal, vendedor, estado, motivo, llegada);
+    await saveGuardia(fecha, sucursal, vendedor, estado, motivo, llegada, cubierto);
     const st = document.getElementById('guardiasStatus');
     if (st) st.textContent = 'Guardado ✓ ' + new Date().toLocaleTimeString('es-AR');
   } catch (err2) {
@@ -2535,6 +2642,14 @@ function historialEventos() {
         evs.push({ fecha, area: 'ventas', tipo: 'llegada_tarde',
           txt: `${cap(vendedor)} (${sucursal}) — Llegó tarde ${info.llegadaTarde}` });
       }
+      if (info.estado === 'reemplazo' && info.cubiertoPor) {
+        evs.push({ fecha, area: 'ventas', tipo: 'reemplazo',
+          txt: `${cap(info.cubiertoPor)} cubrió a ${cap(vendedor)} (${sucursal})` });
+      }
+      if (info.estado === 'compensa') {
+        evs.push({ fecha, area: 'ventas', tipo: 'compensa',
+          txt: `${cap(vendedor)} (${sucursal}) — Compensó con crédito de reemplazo` });
+      }
     });
   }
   // GENERAL: lo acumulado del Sheet en Supabase
@@ -2570,29 +2685,43 @@ function drawHistorial() {
   });
 
   const ordenTipo = { falta: 0, llegada_tarde: 1 };
-  const icono = t => t === 'falta' ? '⚠️' : (t === 'llegada_tarde' ? '⏰' : '📌');
+  const ICONOS = { falta: '⚠️', llegada_tarde: '⏰', reemplazo: '🔁', compensa: '🔄' };
+  const esRC = t => t === 'reemplazo' || t === 'compensa';
 
   const bloques = Array.from(porMes.keys()).sort().reverse().map(ym => {
     const dias = porMes.get(ym);
     let faltas = 0, tardes = 0;
+    const rc = []; // reemplazos y compensaciones del mes (sección propia)
     dias.forEach(items => items.forEach(e => {
       if (e.tipo === 'falta') faltas++;
       else if (e.tipo === 'llegada_tarde') tardes++;
+      else if (esRC(e.tipo)) rc.push(e);
     }));
     const cuerpo = Array.from(dias.keys()).sort().reverse().map(f => {
       const items = dias.get(f)
+        .filter(e => !esRC(e.tipo))
         .sort((a, b) => (ordenTipo[a.tipo] ?? 9) - (ordenTipo[b.tipo] ?? 9) || a.area.localeCompare(b.area))
         .map(e => `
           <div class="personal-item">
-            <span class="p-txt">${icono(e.tipo)} ${escapeHtml(e.txt)}
+            <span class="p-txt">${ICONOS[e.tipo] || '📌'} ${escapeHtml(e.txt)}
               <span class="rep-area ${e.area}">${e.area === 'ventas' ? 'Ventas' : 'General'}</span></span>
           </div>`).join('');
+      if (!items) return '';
       return `<div class="personal-subhead">${dowName(f)} ${fechaDM(f)}</div>${items}`;
     }).join('');
+    const rcHtml = !rc.length ? '' : `
+      <div class="personal-subhead">🔁 Reemplazos y compensaciones</div>
+      ${rc.sort((a, b) => b.fecha.localeCompare(a.fecha)).map(e => `
+        <div class="personal-item">
+          <span class="p-txt">${ICONOS[e.tipo]} ${escapeHtml(e.txt)}</span>
+          <span class="p-date">${dowName(e.fecha)} ${fechaDM(e.fecha)}</span>
+        </div>`).join('')}`;
+    const partes = [`${faltas} falta${faltas === 1 ? '' : 's'}`, `${tardes} tarde${tardes === 1 ? '' : 's'}`];
+    if (rc.length) partes.push(`${rc.length} reempl./comp.`);
     return `
       <div class="personal-wrap" style="margin-bottom:16px">
-        <div class="personal-header-main">${escapeHtml(mesLabel(ym))} · ${faltas} falta${faltas === 1 ? '' : 's'} · ${tardes} tarde${tardes === 1 ? '' : 's'}</div>
-        <div class="personal-body">${cuerpo}</div>
+        <div class="personal-header-main">${escapeHtml(mesLabel(ym))} · ${partes.join(' · ')}</div>
+        <div class="personal-body">${cuerpo}${rcHtml}</div>
       </div>`;
   }).join('');
 
