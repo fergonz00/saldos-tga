@@ -605,23 +605,10 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .personal-item.nov-hoy { background: #E0F2FE; }
 .nov-ico { margin-right: 2px; }
 
-/* ===== Reportes ===== */
-.rep-controls { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-.rep-range { display: flex; gap: 12px; flex-wrap: wrap; }
-.rep-range label { font-size: 12px; color: var(--vw-grey-4); font-weight: 600; display: flex; align-items: center; gap: 6px; }
-.rep-range input[type="date"] { font-family: var(--font); font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--vw-grey-2); outline: none; }
-.rep-range input[type="date"]:focus { border-color: var(--vw-blue); }
-.rep-quick { display: flex; gap: 8px; }
+/* ===== Historial (etiquetas de área Ventas/General) ===== */
 .rep-area { display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.3px; vertical-align: middle; }
 .rep-area.ventas  { background: #DBEAFE; color: #1E40AF; }
 .rep-area.general { background: var(--vw-grey-2); color: var(--vw-grey-4); }
-.rep-row { cursor: pointer; }
-.rep-row:hover { background: var(--vw-grey-1); }
-.rep-toggle { color: var(--vw-grey-3); font-size: 11px; text-align: right; }
-.rep-detail-row td { background: var(--vw-grey-1); padding: 8px 12px; }
-.rep-det { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: var(--vw-grey-4); flex-wrap: wrap; }
-.rep-det-ico { font-size: 12px; }
-.rep-det-txt { color: var(--vw-black); }
 
 /* ===== Calendario / agenda de guardias ===== */
 .gcal-month {
@@ -760,7 +747,7 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
       <div class="subtabs">
         <button class="subtab active" data-sub="novedades" onclick="setPersonalSub('novedades')">Novedades</button>
         <button class="subtab" data-sub="guardias" onclick="setPersonalSub('guardias')">Guardias Ventas</button>
-        <button class="subtab" data-sub="reportes" id="subtabReportes" onclick="setPersonalSub('reportes')">Reportes</button>
+        <button class="subtab" data-sub="historial" id="subtabHistorial" onclick="setPersonalSub('historial')">Historial</button>
       </div>
       <div class="subpanel active" id="subNovedades">
         <div id="personalContent"></div>
@@ -768,8 +755,8 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
       <div class="subpanel" id="subGuardias">
         <div id="guardiasContent"></div>
       </div>
-      <div class="subpanel" id="subReportes">
-        <div id="reportesContent"></div>
+      <div class="subpanel" id="subHistorial">
+        <div id="historialContent"></div>
       </div>
     </section>
 
@@ -896,10 +883,10 @@ function enterApp(session) {
     t.classList.toggle('hidden', !permitidas.includes(t.dataset.tab));
   });
 
-  // La sub-pestaña Reportes es sólo para admins (Mariano no la ve)
+  // La sub-pestaña Historial es sólo para admins (Mariano no la ve)
   const esAdmin = ADMIN_USERS.includes(session.usuario);
-  const subRep = document.getElementById('subtabReportes');
-  if (subRep) subRep.classList.toggle('hidden', !esAdmin);
+  const subHist = document.getElementById('subtabHistorial');
+  if (subHist) subHist.classList.toggle('hidden', !esAdmin);
 
   const primera = permitidas[0] || 'compras';
   setTab(primera);
@@ -933,21 +920,20 @@ function setTab(tab) {
   if (tab === 'bancos')   ensureInforme(renderBancos);
   if (tab === 'personal') {
     const sub = document.querySelector('.subtab.active')?.dataset.sub || 'novedades';
-    if (sub === 'guardias') renderGuardias();
-    else ensureInforme(renderPersonal);
+    setPersonalSub(sub);
   }
 }
 
-// Sub-pestañas dentro de Personal: Novedades / Guardias Ventas
+// Sub-pestañas dentro de Personal: Novedades / Guardias Ventas / Historial
 function setPersonalSub(sub) {
   document.querySelectorAll('.subtab').forEach(t => t.classList.toggle('active', t.dataset.sub === sub));
   document.querySelectorAll('.subpanel').forEach(p => p.classList.remove('active'));
-  const map = { novedades: 'subNovedades', guardias: 'subGuardias', reportes: 'subReportes' };
+  const map = { novedades: 'subNovedades', guardias: 'subGuardias', historial: 'subHistorial' };
   const el = document.getElementById(map[sub]);
   if (el) el.classList.add('active');
   if (sub === 'novedades') ensureInforme(renderPersonal);
   if (sub === 'guardias')  renderGuardias();
-  if (sub === 'reportes')  renderReportes();
+  if (sub === 'historial') renderHistorial();
 }
 
 // =======================================================================
@@ -2042,12 +2028,15 @@ function renderPersonal() {
 }
 
 // Novedades derivadas de las guardias: faltas (con motivo) y llegadas tarde.
+// Sólo lo de HOY — los días anteriores quedan en la sub-pestaña Historial.
 function renderNovedadesGuardias() {
   if (!guardiasOverrides || !guardiasOverrides.size) return '';
+  const hoy = hoyISO();
   const items = [];
   guardiasOverrides.forEach((info, key) => {
     const parts = key.split('|');
     const fecha = parts[0], sucursal = parts[1], vendedor = parts[2];
+    if (fecha !== hoy) return;
     if (info.estado === 'falta') {
       items.push({ fecha, tipo: 'falta', vendedor, sucursal,
         txt: `${cap(vendedor)} (${sucursal}) — Falta${info.motivo ? ': ' + info.motivo : ''}` });
@@ -2059,13 +2048,12 @@ function renderNovedadesGuardias() {
   });
   if (!items.length) return '';
   items.sort((a, b) => b.fecha.localeCompare(a.fecha) || a.vendedor.localeCompare(b.vendedor));
-  const hoy = hoyISO();
   const rows = items.map(it => `
     <div class="personal-item ${it.fecha === hoy ? 'nov-hoy' : ''}">
       <span class="p-txt"><span class="nov-ico ${it.tipo}">${it.tipo === 'falta' ? '⚠️' : '⏰'}</span> ${escapeHtml(it.txt)}</span>
       <span class="p-date">${dowName(it.fecha)} ${fechaDM(it.fecha)}${it.fecha === hoy ? ' · HOY' : ''}</span>
     </div>`).join('');
-  return `<div class="personal-header-main">📋 Novedades de guardias (faltas y llegadas tarde)</div>${rows}`;
+  return `<div class="personal-header-main">📋 Novedades de guardias de hoy</div>${rows}`;
 }
 
 // =======================================================================
@@ -2293,7 +2281,12 @@ function renderGuardiaAusencias(fechas) {
       groups.push({ vendedor: it.vendedor, sucursal: it.sucursal, estado: it.estado, desde: it.fecha, hasta: it.fecha });
     }
   });
-  const li = groups.map(g => {
+  // Sólo lo vigente HOY: ni faltas de días anteriores ni vacaciones que todavía
+  // no arrancaron (el resto se ve en el calendario / Historial).
+  const hoy = hoyISO();
+  const vigentes = groups.filter(g => g.desde <= hoy && g.hasta >= hoy);
+  if (!vigentes.length) return '';
+  const li = vigentes.map(g => {
     const rango = g.desde === g.hasta
       ? `${dowName(g.desde)} ${fechaDM(g.desde)}`
       : `${dowName(g.desde)} ${fechaDM(g.desde)} → ${dowName(g.hasta)} ${fechaDM(g.hasta)}`;
@@ -2304,7 +2297,7 @@ function renderGuardiaAusencias(fechas) {
     </div>`;
   }).join('');
   return `<div class="guardias-ausentes">
-    <div class="ga-head">Ausencias del período (${groups.length})</div>
+    <div class="ga-head">Ausencias de hoy (${vigentes.length})</div>
     ${li}
   </div>`;
 }
@@ -2486,8 +2479,8 @@ function parseNovedadesPersonal(personal) {
   return out;
 }
 
-// Respaldo opcional: acumula en Supabase lo que trae el Sheet (dedup). No requiere
-// tocar nada en Sheets; corre solo al abrir la app. Los reportes igual funcionan en vivo.
+// Acumula en Supabase lo que trae el Sheet (dedup) — de acá sale el Historial
+// general día a día. No requiere tocar nada en Sheets; corre solo al abrir la app.
 async function snapshotNovedadesGenerales(personal) {
   const parsed = parseNovedadesPersonal(personal);
   if (!parsed.length) return;
@@ -2506,154 +2499,104 @@ async function snapshotNovedadesGenerales(personal) {
 }
 
 // =======================================================================
-// REPORTES · faltas y llegadas tarde por persona (ventas + general)
+// HISTORIAL · faltas y llegadas tarde acumuladas, mes a mes y día a día
+// (ventas = guardias en Supabase · general = novedades del Sheet acumuladas
+// día a día en saldos_novedades)
 // =======================================================================
-let reportesGeneral = null;       // filas de saldos_novedades
-let reportesDesde = '';
-let reportesHasta = '';
-let reportesOpen = new Set();
+let historialGeneral = null;   // filas de saldos_novedades
 
-async function renderReportes() {
-  const wrap = document.getElementById('reportesContent');
+async function renderHistorial() {
+  const wrap = document.getElementById('historialContent');
   if (!wrap) return;
-  wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando reportes...</div></div>';
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando historial...</div></div>';
   // Ventas: las guardias cargadas (lo que la app sumó de los vendedores)
   if (!guardiasLoaded && !guardiasSinTabla) { try { await loadGuardiasOverrides(); } catch (e) {} }
-  // General en vivo: lo que trae el Apps Script
-  if (!lastInforme) { try { await loadInforme(); } catch (e) {} }
-  // General acumulado (respaldo histórico, por si el Sheet se pisa)
+  // General: acumulado día a día de las novedades del Sheet
   try {
-    reportesGeneral = await sbFetch('saldos_novedades?select=fecha,area,tipo,persona,detalle,origen&order=fecha.desc');
-  } catch (e) { console.error('reportes general:', e); reportesGeneral = []; }
-  drawReportes();
+    historialGeneral = await sbFetch('saldos_novedades?select=fecha,area,tipo,persona,detalle&order=fecha.desc');
+  } catch (e) { console.error('historial general:', e); historialGeneral = []; }
+  drawHistorial();
 }
 
-function reportesEventos() {
+function historialEventos() {
   const evs = [];
+  const hoy = hoyISO();
   // VENTAS: lo que la app sumó de los vendedores (guardias)
   if (guardiasOverrides) {
     guardiasOverrides.forEach((info, key) => {
       const parts = key.split('|');
       const fecha = parts[0], sucursal = parts[1], vendedor = parts[2];
+      if (fecha > hoy) return;   // lo futuro no es historial
       if (info.estado === 'falta') {
-        evs.push({ fecha, persona: cap(vendedor), area: 'ventas', tipo: 'falta', detalle: info.motivo || '', extra: sucursal });
+        evs.push({ fecha, area: 'ventas', tipo: 'falta',
+          txt: `${cap(vendedor)} (${sucursal}) — Falta${info.motivo ? ': ' + info.motivo : ''}` });
       }
       if (info.llegadaTarde) {
-        evs.push({ fecha, persona: cap(vendedor), area: 'ventas', tipo: 'llegada_tarde', detalle: info.llegadaTarde, extra: sucursal });
+        evs.push({ fecha, area: 'ventas', tipo: 'llegada_tarde',
+          txt: `${cap(vendedor)} (${sucursal}) — Llegó tarde ${info.llegadaTarde}` });
       }
     });
   }
-  // GENERAL: en vivo del Apps Script (lastInforme) + acumulado en Supabase, deduplicado
-  const genMap = new Map();
-  const addGen = (fecha, tipo, persona, detalle) => {
-    if (tipo !== 'falta' && tipo !== 'llegada_tarde') return;
-    if (!fecha || !persona) return;
-    const k = [fecha, tipo, String(persona).toLowerCase(), String(detalle || '').toLowerCase()].join('|');
-    if (!genMap.has(k)) genMap.set(k, { fecha, persona: String(persona).trim(), area: 'general', tipo, detalle: detalle || '', extra: '' });
-  };
-  parseNovedadesPersonal(lastInforme && lastInforme.personal).forEach(e => addGen(e.fecha, e.tipo, e.persona, e.detalle));
-  (reportesGeneral || []).forEach(r => addGen(r.fecha, r.tipo, r.persona, r.detalle));
-  genMap.forEach(v => evs.push(v));
+  // GENERAL: lo acumulado del Sheet en Supabase
+  (historialGeneral || []).forEach(r => {
+    if (!r.fecha || r.fecha > hoy) return;
+    const persona = String(r.persona || '').trim();
+    if (!persona) return;
+    const pre = r.tipo === 'falta' ? 'Falta: ' : (r.tipo === 'llegada_tarde' ? 'Tarde: ' : '');
+    evs.push({ fecha: r.fecha, area: 'general', tipo: r.tipo, txt: pre + persona });
+  });
   return evs;
 }
 
-function reportesEnRango(fecha) {
-  if (!fecha) return false;
-  if (reportesDesde && fecha < reportesDesde) return false;
-  if (reportesHasta && fecha > reportesHasta) return false;
-  return true;
-}
-
-function setReportesDesde(v) { reportesDesde = v || ''; drawReportes(); }
-function setReportesHasta(v) { reportesHasta = v || ''; drawReportes(); }
-function setReportesMesActual() {
-  const h = hoyISO();
-  reportesDesde = h.slice(0, 8) + '01';
-  reportesHasta = h;
-  drawReportes();
-}
-function setReportesTodo() { reportesDesde = ''; reportesHasta = ''; drawReportes(); }
-function toggleReportePersona(k) {
-  if (reportesOpen.has(k)) reportesOpen.delete(k); else reportesOpen.add(k);
-  drawReportes();
-}
-
-function drawReportes() {
-  const wrap = document.getElementById('reportesContent');
+function drawHistorial() {
+  const wrap = document.getElementById('historialContent');
   if (!wrap) return;
-  const evs = reportesEventos().filter(e => reportesEnRango(e.fecha));
-
-  const porPersona = new Map();
-  evs.forEach(e => {
-    const k = e.persona.toLowerCase();
-    if (!porPersona.has(k)) porPersona.set(k, { key: k, nombre: e.persona, areas: new Set(), faltas: [], tardes: [] });
-    const g = porPersona.get(k);
-    g.areas.add(e.area);
-    if (e.tipo === 'falta') g.faltas.push(e); else g.tardes.push(e);
-  });
-  const arr = Array.from(porPersona.values()).sort((a, b) =>
-    (b.faltas.length + b.tardes.length) - (a.faltas.length + a.tardes.length) || a.nombre.localeCompare(b.nombre));
-
-  const totFaltas = evs.filter(e => e.tipo === 'falta').length;
-  const totTardes = evs.filter(e => e.tipo === 'llegada_tarde').length;
-
-  const controls = `
-    <div class="rep-controls">
-      <div class="rep-range">
-        <label>Desde <input type="date" value="${escapeHtml(reportesDesde)}" onchange="setReportesDesde(this.value)"></label>
-        <label>Hasta <input type="date" value="${escapeHtml(reportesHasta)}" onchange="setReportesHasta(this.value)"></label>
-      </div>
-      <div class="rep-quick">
-        <button class="filter-btn" onclick="setReportesMesActual()">Este mes</button>
-        <button class="filter-btn ${(!reportesDesde && !reportesHasta) ? 'active' : ''}" onclick="setReportesTodo()">Todo</button>
-      </div>
-    </div>
-    <div class="cards">
-      <div class="card bad"><div class="label">Faltas</div><div class="value">${totFaltas}</div><div class="sub">en el período</div></div>
-      <div class="card warn"><div class="label">Llegadas tarde</div><div class="value">${totTardes}</div><div class="sub">en el período</div></div>
-      <div class="card"><div class="label">Personas con novedades</div><div class="value">${arr.length}</div><div class="sub">ventas + general</div></div>
-    </div>`;
-
-  if (!arr.length) {
-    wrap.innerHTML = controls + `<div class="empty"><div class="ico">📊</div>
-      <div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin faltas ni llegadas tarde en el período</div>
-      <div style="font-size:12px;color:var(--vw-grey-3);margin-top:6px">Se va acumulando con las guardias de ventas y las novedades del Sheet.</div></div>`;
+  const evs = historialEventos();
+  if (!evs.length) {
+    wrap.innerHTML = `<div class="empty"><div class="ico">📚</div>
+      <div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin historial todavía</div>
+      <div style="font-size:12px;color:var(--vw-grey-3);margin-top:6px">Se va acumulando día a día con las guardias de ventas y las novedades del Sheet.</div></div>`;
     return;
   }
 
-  const rows = arr.map(g => {
-    const open = reportesOpen.has(g.key);
-    const areaTags = Array.from(g.areas).map(a => `<span class="rep-area ${a}">${a === 'ventas' ? 'Ventas' : 'General'}</span>`).join(' ');
-    const det = !open ? '' : `
-      <tr class="rep-detail-row"><td colspan="4">
-        ${[...g.faltas.map(e => ['falta', e]), ...g.tardes.map(e => ['tarde', e])]
-          .sort((a, b) => b[1].fecha.localeCompare(a[1].fecha))
-          .map(([t, e]) => `<div class="rep-det">
-            <span class="rep-det-ico">${t === 'falta' ? '⚠️' : '⏰'}</span>
-            <span>${dowName(e.fecha)} ${fechaDM(e.fecha)}</span>
-            <span class="rep-area ${e.area}">${e.area === 'ventas' ? 'Ventas' : 'General'}</span>
-            <span class="rep-det-txt">${escapeHtml(t === 'falta' ? ('Falta' + (e.detalle ? ': ' + e.detalle : '')) : ('Llegó tarde ' + (e.detalle || '')))}</span>
-          </div>`).join('')}
-      </td></tr>`;
+  // Agrupar por mes → día
+  const porMes = new Map(); // 'YYYY-MM' → Map('YYYY-MM-DD' → [eventos])
+  evs.forEach(e => {
+    const ym = e.fecha.slice(0, 7);
+    if (!porMes.has(ym)) porMes.set(ym, new Map());
+    const dias = porMes.get(ym);
+    if (!dias.has(e.fecha)) dias.set(e.fecha, []);
+    dias.get(e.fecha).push(e);
+  });
+
+  const ordenTipo = { falta: 0, llegada_tarde: 1 };
+  const icono = t => t === 'falta' ? '⚠️' : (t === 'llegada_tarde' ? '⏰' : '📌');
+
+  const bloques = Array.from(porMes.keys()).sort().reverse().map(ym => {
+    const dias = porMes.get(ym);
+    let faltas = 0, tardes = 0;
+    dias.forEach(items => items.forEach(e => {
+      if (e.tipo === 'falta') faltas++;
+      else if (e.tipo === 'llegada_tarde') tardes++;
+    }));
+    const cuerpo = Array.from(dias.keys()).sort().reverse().map(f => {
+      const items = dias.get(f)
+        .sort((a, b) => (ordenTipo[a.tipo] ?? 9) - (ordenTipo[b.tipo] ?? 9) || a.area.localeCompare(b.area))
+        .map(e => `
+          <div class="personal-item">
+            <span class="p-txt">${icono(e.tipo)} ${escapeHtml(e.txt)}
+              <span class="rep-area ${e.area}">${e.area === 'ventas' ? 'Ventas' : 'General'}</span></span>
+          </div>`).join('');
+      return `<div class="personal-subhead">${dowName(f)} ${fechaDM(f)}</div>${items}`;
+    }).join('');
     return `
-      <tr class="rep-row" onclick="toggleReportePersona('${escapeHtml(g.key)}')">
-        <td><strong>${escapeHtml(g.nombre)}</strong> ${areaTags}</td>
-        <td class="num">${g.faltas.length}</td>
-        <td class="num">${g.tardes.length}</td>
-        <td class="rep-toggle">${open ? '▲' : '▼'}</td>
-      </tr>${det}`;
+      <div class="personal-wrap" style="margin-bottom:16px">
+        <div class="personal-header-main">${escapeHtml(mesLabel(ym))} · ${faltas} falta${faltas === 1 ? '' : 's'} · ${tardes} tarde${tardes === 1 ? '' : 's'}</div>
+        <div class="personal-body">${cuerpo}</div>
+      </div>`;
   }).join('');
 
-  wrap.innerHTML = controls + `
-    <div class="table-wrap">
-      <div class="table-head"><h3>Por persona</h3><span class="count">${arr.length} persona${arr.length === 1 ? '' : 's'} · tocá para ver el detalle</span></div>
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>Persona</th><th class="num">Faltas</th><th class="num">Tardes</th><th></th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
+  wrap.innerHTML = bloques;
 }
 
 function fmtDateKey(d) {
