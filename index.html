@@ -2342,7 +2342,7 @@ function renderGuardiaAusencias(fechas) {
     const info = guardiaInfo(f, suc.nombre, v);
     const est = info.estado;
     if (est === 'vacaciones' || est === 'falta' || est === 'curso' || est === 'reemplazo' || est === 'compensa') {
-      raw.push({ fecha: f, vendedor: v, sucursal: suc.nombre, estado: est, cubierto: info.cubiertoPor || '' });
+      raw.push({ fecha: f, vendedor: v, sucursal: suc.nombre, estado: est, cubierto: info.cubiertoPor || '', motivo: info.motivo || '' });
     }
   })));
   if (!raw.length) return '';
@@ -2356,8 +2356,9 @@ function renderGuardiaAusencias(fechas) {
         last.estado === it.estado && diasConsecutivos(last.hasta, it.fecha)) {
       last.hasta = it.fecha;
       if (it.cubierto) last.cubierto = it.cubierto;
+      if (it.motivo && last.motivos.indexOf(it.motivo) < 0) last.motivos.push(it.motivo);
     } else {
-      groups.push({ vendedor: it.vendedor, sucursal: it.sucursal, estado: it.estado, desde: it.fecha, hasta: it.fecha, cubierto: it.cubierto || '' });
+      groups.push({ vendedor: it.vendedor, sucursal: it.sucursal, estado: it.estado, desde: it.fecha, hasta: it.fecha, cubierto: it.cubierto || '', motivos: it.motivo ? [it.motivo] : [] });
     }
   });
   // Sólo lo vigente HOY: ni faltas de días anteriores ni vacaciones que todavía
@@ -2371,9 +2372,11 @@ function renderGuardiaAusencias(fechas) {
       : `${dowName(g.desde)} ${fechaDM(g.desde)} → ${dowName(g.hasta)} ${fechaDM(g.hasta)}`;
     const cubre = (g.estado === 'reemplazo' && g.cubierto)
       ? ` <span style="font-size:12px;color:var(--vw-grey-4)">· lo cubre <strong>${escapeHtml(cap(g.cubierto))}</strong></span>` : '';
+    const causa = (g.estado === 'falta' && g.motivos.length)
+      ? ` <span style="font-size:12px;color:var(--vw-grey-4)">· ${escapeHtml(g.motivos.join(', '))}</span>` : '';
     return `<div class="ga-item">
       <span><strong>${escapeHtml(cap(g.vendedor))}</strong> · ${escapeHtml(g.sucursal)}
-        <span class="ga-tag ${g.estado}">${escapeHtml(GUARDIAS_ESTADOS[g.estado].label)}</span>${cubre}</span>
+        <span class="ga-tag ${g.estado}">${escapeHtml(GUARDIAS_ESTADOS[g.estado].label)}</span>${cubre}${causa}</span>
       <span class="ga-when">${rango}</span>
     </div>`;
   }).join('');
