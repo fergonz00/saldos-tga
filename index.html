@@ -2806,10 +2806,9 @@ function parseFechaCorta(s) {
     showGate('Necesitás iniciar sesión en el portal.');
     return;
   }
-  if (session._impersonatedBy) {
-    showGate('Esta vista no permite sesiones impersonadas.');
-    return;
-  }
+  // Sesión impersonada: se permite y se trata como el usuario impersonado
+  // (la misma vista que vería esa persona). Quién puede impersonar a Mariano
+  // queda restringido al owner desde el portal (IMPERSONAR_SOLO_OWNER).
   if (!USUARIOS_PERMITIDOS.includes(session.usuario)) {
     showGate('Tu usuario no tiene acceso a esta vista.');
     return;
