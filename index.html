@@ -716,6 +716,12 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .tes-inp:focus { outline: none; border-color: var(--vw-blue); box-shadow: 0 0 0 2px rgba(0,30,80,.12); }
 .tes-inp:disabled { background: #f6f8fa; color: #444; }
 .tes-monto { text-align: right; }
+.dispvw-inp {
+  width: 100%; box-sizing: border-box; padding: 4px 8px; margin-top: 2px;
+  font-size: 21px; font-weight: 700; color: var(--vw-blue); text-align: left;
+  border: 1px solid var(--vw-grey-2, #d7dee5); border-radius: 6px; background: #fff;
+}
+.dispvw-inp:focus { outline: none; border-color: var(--vw-blue); box-shadow: 0 0 0 2px rgba(0,30,80,.12); }
 .tes-moneda { width: auto; min-width: 56px; padding: 6px 4px; }
 td .tes-concepto { min-width: 180px; }
 td .tes-fecha { min-width: 90px; }
@@ -782,7 +788,7 @@ td .tes-nota { min-width: 90px; }
 
     <div class="tabs">
       <button class="tab active" data-tab="compras" onclick="setTab('compras')">Compras VW</button>
-      <button class="tab" data-tab="proxvtos" onclick="setTab('proxvtos')">Próx. Vencimientos</button>
+      <button class="tab" data-tab="flujo" onclick="setTab('flujo')">Flujo financiero</button>
       <button class="tab" data-tab="bancos" onclick="setTab('bancos')">Bancos</button>
       <button class="tab" data-tab="personal" onclick="setTab('personal')">Personal</button>
     </div>
@@ -797,9 +803,13 @@ td .tes-nota { min-width: 90px; }
       <div id="comprasContent"></div>
     </section>
 
-    <!-- =================== PANEL PRÓX VTOS =================== -->
-    <section class="panel" id="panelProxvtos">
-      <div id="proxVtosContent"></div>
+    <!-- =================== PANEL FLUJO FINANCIERO =================== -->
+    <section class="panel" id="panelFlujo">
+      <div class="toolbar">
+        <div class="updated" id="updatedAtFlujo">—</div>
+        <button class="refresh" id="btnRefreshFlujo" onclick="loadFlujoSaldos(true)">Actualizar</button>
+      </div>
+      <div id="flujoContent"></div>
     </section>
 
     <!-- =================== PANEL BANCOS =================== -->
@@ -852,9 +862,15 @@ const BANCOS_EDITORES = ['fngonzalez', 'fgonzalez', 'cgonzalez', 'vreyna'];
 // Quién puede editar el cronograma de guardias
 const GUARDIAS_EDITORES = ['fngonzalez', 'fgonzalez', 'marianom'];
 
-// URL del Web App publicado en la planilla espejo.
+// URL del Web App publicado en la planilla espejo (legacy: ya no se usa para
+// Compras/Bancos/Personal; se mantiene por si quedan referencias).
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyRTqqpQMjKDL82Z5Cjd9IJWPQnINF0LAEvji8FizfXMBO8Cz0IVbTSnQnNmH_rRxz9yg/exec';
 const APPS_SCRIPT_TOKEN = 'tga-saldos-K9Mx2P7vQ';
+
+// Backend de GESTIÓN (gestion.titogonzalez.online): fuente real de Compras VW
+// (tabla compras_vw) y del Flujo financiero. Saldos lee de acá, no de la planilla.
+const GESTION_URL = 'https://script.google.com/macros/s/AKfycby13NRmtve2ojB0IMZgFPnKh3HsLSBLDca4kOduRenO97KLH3W3ILbiJfDzGYVLAUpwpQ/exec';
+const GESTION_TOKEN = 'tga-gestion-R7nQ4xK8jL';
 
 // Supabase — para acumulado diario de fondos (mismo proyecto que el portal/tasador)
 const SUPABASE_URL = 'https://wjfglsafgaltusmbnccl.supabase.co';
@@ -950,7 +966,7 @@ function showGate(msg) {
   document.getElementById('gateScreen').classList.remove('hidden');
 }
 function tabsPermitidas(session) {
-  if (ADMIN_USERS.includes(session.usuario)) return ['compras', 'proxvtos', 'bancos', 'personal'];
+  if (ADMIN_USERS.includes(session.usuario)) return ['compras', 'flujo', 'bancos', 'personal'];
   return TAB_ACCESS[session.usuario] || [];
 }
 function enterApp(session) {
@@ -990,14 +1006,14 @@ function setTab(tab) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   const map = {
     compras:  'panelCompras',
-    proxvtos: 'panelProxvtos',
+    flujo:    'panelFlujo',
     bancos:   'panelBancos',
     personal: 'panelPersonal',
   };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
   if (tab === 'compras' && !lastCompras) loadCompras();
-  if (tab === 'proxvtos') renderProxVtos();
+  if (tab === 'flujo') loadFlujoSaldos();
   if (tab === 'bancos')   loadBancos();
   if (tab === 'personal') {
     const sub = document.querySelector('.subtab.active')?.dataset.sub || 'novedades';
@@ -1064,37 +1080,95 @@ function ensureInforme(cb) {
 }
 
 // =======================================================================
-// COMPRAS · fetch + render
+// COMPRAS VW · ahora se lee de la tabla compras_vw (vía backend de GESTIÓN),
+// NO de la planilla espejo. Reglas del Floor Plan:
+//   floorPlan = 5.200.000.000 fijo
+//   deudaFloorPlan = suma de lo que debemos en unidades (importe_saldo impagas)
+//   disponibleFloorPlan = floorPlan − deudaFloorPlan
+//   disponibleVW (a pagar VW) = manual por ahora (tesoreria_items FLOORPLAN)
 // =======================================================================
+const FLOOR_PLAN_FIJO = 5200000000;
+let _dispVWid = null;   // id de la fila tesoreria_items con el "disponible para pagar VW"
+
+function _saldosFechaDisp(v) {
+  const s = String(v || '').trim(); if (!s) return '';
+  const d = parseFechaCorta(s); if (!d) return s;
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + String(d.getFullYear()).slice(-2);
+}
+// Bruto (total c/imp.) de una compra_vw: importe_saldo real, o el Control que
+// calcula el backend como fallback.
+function _cvwBrutoRow(c) {
+  return Number(c.importe_saldo) || Number(c.control) || 0;
+}
+// compra_vw (enriquecida por el backend de gestión) → forma que espera renderCompras.
+function _mapCompraVW(c) {
+  const bruto = _cvwBrutoRow(c);
+  return {
+    idx: c.serie, serie: c.serie, mes: c.mes || '',
+    modelo: c.modeloOficial || c.modelo_valeria || '',
+    color: c.colorOversoft || c.color || '',
+    fc: c.fc_numero || '',
+    fechaFc: _saldosFechaDisp(c.fecha_fc),
+    vence: _saldosFechaDisp(c.vence),
+    fechaPago: c.fecha_pago_vw ? _saldosFechaDisp(c.fecha_pago_vw) : '',
+    preventa: c.preventaOversoft || (c.pv && c.pv.numero) || '',
+    fechaVta: '', localidad: (c.pv && c.pv.localidad) || '',
+    impaga: !!c.impaga,
+    importe: bruto, total: bruto,
+  };
+}
+async function _loadDispVW() {
+  try {
+    const r = await sbFetch("tesoreria_items?select=id,monto&seccion=eq.FLOORPLAN&concepto=eq.disp_pagar_vw&limit=1");
+    if (r && r[0]) { _dispVWid = r[0].id; return Number(r[0].monto) || 0; }
+  } catch (e) {}
+  return 0;
+}
+async function guardarDispVW(el) {
+  if (!BANCOS_EDITORES.includes((getSharedCookie() || {}).usuario)) return;
+  const monto = parseMonto(el.value);
+  const s = getSharedCookie() || {};
+  try {
+    if (_dispVWid) {
+      await sbFetch('tesoreria_items?id=eq.' + _dispVWid, { method: 'PATCH', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify({ monto: monto, updated_at: new Date().toISOString(), updated_by: s.usuario || '' }) });
+    } else {
+      const r = await sbFetch('tesoreria_items', { method: 'POST', headers: { 'Prefer': 'return=representation' }, body: JSON.stringify([{ seccion: 'FLOORPLAN', concepto: 'disp_pagar_vw', monto: monto, updated_by: s.usuario || '' }]) });
+      if (r && r[0]) _dispVWid = r[0].id;
+    }
+    if (lastCompras) { lastCompras.disponibleVW = monto || 0; renderCompras(lastCompras); }
+  } catch (e) { alert('No se pudo guardar: ' + (e.message || e)); }
+}
+
 async function loadCompras() {
   const wrap = document.getElementById('comprasContent');
   const btn = document.getElementById('btnRefresh');
-  btn.disabled = true; btn.textContent = 'Cargando...';
-  wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando datos...</div></div>';
-
-  if (APPS_SCRIPT_URL.indexOf('__APPS_SCRIPT_URL_PENDIENTE__') === 0) {
-    wrap.innerHTML = '<div class="errbox"><div class="ico">⚙️</div>'
-      + '<div class="ttl">Falta conectar la planilla</div>'
-      + '<div>Pendiente: publicar el Apps Script y pegar la URL en <code>index.html</code>.</div></div>';
-    btn.disabled = false; btn.textContent = 'Actualizar';
-    return;
-  }
-
+  if (btn) { btn.disabled = true; btn.textContent = 'Cargando...'; }
+  wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando compras…</div></div>';
   try {
-    const url = APPS_SCRIPT_URL + '?token=' + encodeURIComponent(APPS_SCRIPT_TOKEN) + '&tipo=compras';
-    const res = await fetch(url);
+    const url = GESTION_URL + '?token=' + encodeURIComponent(GESTION_TOKEN) + '&tipo=comprasvw';
+    const [res, dispVW] = await Promise.all([fetch(url), _loadDispVW()]);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (data && data.error) throw new Error(data.error);
-    lastCompras = data;
-    renderCompras(data);
+    const compras = Array.isArray(data.compras) ? data.compras : [];
+    const deudaFloorPlan = compras.filter(c => c.impaga).reduce((a, c) => a + _cvwBrutoRow(c), 0);
+    lastCompras = {
+      unidades: compras.map(_mapCompraVW),
+      floorPlan: FLOOR_PLAN_FIJO,
+      deudaFloorPlan: deudaFloorPlan,
+      disponibleFloorPlan: FLOOR_PLAN_FIJO - deudaFloorPlan,
+      disponibleVW: dispVW,
+      updatedAt: data.updatedAt || new Date().toISOString(),
+    };
+    renderCompras(lastCompras);
   } catch (e) {
     console.error(e);
     wrap.innerHTML = '<div class="errbox"><div class="ico">⚠️</div>'
-      + '<div class="ttl">No se pudo cargar la planilla</div>'
+      + '<div class="ttl">No se pudo cargar Compras VW</div>'
       + '<div class="det">' + escapeHtml(e.message || String(e)) + '</div></div>';
   } finally {
-    btn.disabled = false; btn.textContent = 'Actualizar';
+    if (btn) { btn.disabled = false; btn.textContent = 'Actualizar'; }
   }
 }
 
@@ -1114,12 +1188,12 @@ function renderCompras(data) {
       <div class="card">
         <div class="label">Floor Plan</div>
         <div class="value">${fmtMoney(floorPlan)}</div>
-        <div class="sub">Línea de crédito con VW</div>
+        <div class="sub">Línea de crédito con VW (fijo)</div>
       </div>
       <div class="card warn">
         <div class="label">Deuda Floor Plan</div>
         <div class="value">${fmtMoney(deudaFloorPlan)}</div>
-        <div class="sub">${impagas.length} unidad${impagas.length === 1 ? '' : 'es'} impaga${impagas.length === 1 ? '' : 's'}</div>
+        <div class="sub">${impagas.length} unidad${impagas.length === 1 ? '' : 'es'} impaga${impagas.length === 1 ? '' : 's'} (lo que debemos a VW)</div>
       </div>
       <div class="card ${disponibleFloorPlan >= 0 ? 'good' : 'bad'}">
         <div class="label">Disponible Floor Plan</div>
@@ -1128,8 +1202,10 @@ function renderCompras(data) {
       </div>
       <div class="card good">
         <div class="label">Disponible para pagar VW</div>
-        <div class="value">${fmtMoney(disponibleVW)}</div>
-        <div class="sub">$ que figura en VW para aplicar</div>
+        ${BANCOS_EDITORES.includes((getSharedCookie() || {}).usuario)
+          ? `<input type="text" class="dispvw-inp" value="${disponibleVW || ''}" placeholder="0" onchange="guardarDispVW(this)">`
+          : `<div class="value">${fmtMoney(disponibleVW)}</div>`}
+        <div class="sub">manual · se conectará con Bancos</div>
       </div>
     </div>
   `;
@@ -2066,6 +2142,99 @@ function renderSeccionBanco(sec) {
       </div>
     </div>
   `;
+}
+
+// =======================================================================
+// FLUJO FINANCIERO · se trae del backend de GESTIÓN (tipo=flujo): cobros
+// pendientes de ventas (ingresos) vs pagos a VW impagos (egresos), por semana.
+// =======================================================================
+let flujoData = null, flujoAbiertas = new Set();
+function _flujoToISO(v) {
+  const d = parseFechaCorta(v); if (!d) return null;
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+function _flujoSemanaKey(iso) {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  if (isNaN(d.getTime())) return null;
+  const dow = (d.getDay() + 6) % 7;   // 0 = lunes
+  d.setDate(d.getDate() - dow);
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+function _flujoSemLabel(iso) {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? ('Semana del ' + m[3] + '/' + m[2]) : 'Sin fecha';
+}
+function _flujoCard(titulo, monto, color) {
+  return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid var(--vw-grey-2);border-radius:12px;padding:12px 14px">'
+    + '<div style="font-size:12px;color:var(--vw-grey-4)">' + titulo + '</div>'
+    + '<div style="font-size:20px;font-weight:800;color:' + color + ';margin-top:4px">' + fmtMoney(monto) + '</div></div>';
+}
+function toggleFlujoSem(key) { if (flujoAbiertas.has(key)) flujoAbiertas.delete(key); else flujoAbiertas.add(key); renderFlujoSaldos(); }
+async function loadFlujoSaldos(forzar) {
+  const cont = document.getElementById('flujoContent');
+  const btn = document.getElementById('btnRefreshFlujo');
+  if (btn) { btn.disabled = true; btn.textContent = 'Cargando...'; }
+  if (cont && (forzar || !flujoData)) cont.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando flujo…</div></div>';
+  try {
+    const url = GESTION_URL + '?token=' + encodeURIComponent(GESTION_TOKEN) + '&tipo=flujo' + (forzar ? '&fresh=1' : '');
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data && data.error) throw new Error(data.error);
+    flujoData = data;
+    const upd = document.getElementById('updatedAtFlujo');
+    if (upd) upd.textContent = 'Actualizado: ' + new Date().toLocaleString('es-AR');
+    renderFlujoSaldos();
+  } catch (e) {
+    console.error(e);
+    if (cont) cont.innerHTML = '<div class="errbox"><div class="ico">⚠️</div><div class="ttl">No se pudo cargar el flujo</div><div class="det">' + escapeHtml(e.message || String(e)) + '</div></div>';
+  } finally { if (btn) { btn.disabled = false; btn.textContent = 'Actualizar'; } }
+}
+function renderFlujoSaldos() {
+  const cont = document.getElementById('flujoContent');
+  if (!cont) return;
+  if (!flujoData) { cont.innerHTML = '<div class="empty">Sin datos.</div>'; return; }
+  const ing = flujoData.ingresos || [], egr = flujoData.egresos || [];
+  const totIng = ing.reduce((a, x) => a + (x.monto || 0), 0);
+  const totEgr = egr.reduce((a, x) => a + (x.monto || 0), 0);
+  const sem = {};
+  const add = (key, tipo, monto, item) => { const k = key || '__sin__'; if (!sem[k]) sem[k] = { ing: 0, egr: 0, items: [] }; sem[k][tipo] += monto; sem[k].items.push(item); };
+  for (const x of ing) add(_flujoSemanaKey(x.fecha), 'ing', x.monto, { tipo: 'ing', monto: x.monto, desc: 'PV ' + x.pv + ' · ' + x.concepto + (x.cliente ? ' · ' + x.cliente : '') });
+  for (const x of egr) add(_flujoSemanaKey(_flujoToISO(x.vence)), 'egr', x.monto, { tipo: 'egr', monto: x.monto, desc: x.serie + ' · ' + (x.modelo || '') + (x.vence ? ' · vto ' + _saldosFechaDisp(x.vence) : '') });
+  const keys = Object.keys(sem).sort((a, b) => (a === '__sin__' ? '9999' : a).localeCompare(b === '__sin__' ? '9999' : b));
+  let h = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
+    + _flujoCard('💚 A cobrar (clientes)', totIng, '#0a7a30')
+    + _flujoCard('🔴 A pagar a VW', totEgr, '#cc3300')
+    + _flujoCard('⚖️ Neto', totIng - totEgr, (totIng - totEgr) >= 0 ? '#0a7a30' : '#cc3300')
+    + '</div>';
+  h += '<div class="table-wrap"><div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:680px">';
+  h += '<thead><tr><th style="text-align:left">Semana</th><th style="text-align:right">💚 Ingresos</th><th style="text-align:right">🔴 Egresos</th><th style="text-align:right">Neto</th><th style="text-align:right">Acumulado</th><th></th></tr></thead><tbody>';
+  let acum = 0;
+  for (const k of keys) {
+    const s = sem[k]; const neto = s.ing - s.egr; acum += neto;
+    const abierta = flujoAbiertas.has(k);
+    h += '<tr onclick="toggleFlujoSem(\'' + k + '\')" style="cursor:pointer' + (abierta ? ';background:#eef5ff' : '') + '">'
+      + '<td>' + (k === '__sin__' ? 'Sin fecha' : _flujoSemLabel(k)) + '</td>'
+      + '<td style="text-align:right;color:#0a7a30">' + (s.ing ? fmtMoney(s.ing) : '—') + '</td>'
+      + '<td style="text-align:right;color:#cc3300">' + (s.egr ? fmtMoney(s.egr) : '—') + '</td>'
+      + '<td style="text-align:right;font-weight:700;color:' + (neto >= 0 ? '#0a7a30' : '#cc3300') + '">' + fmtMoney(neto) + '</td>'
+      + '<td style="text-align:right;font-weight:700;color:' + (acum >= 0 ? '#0a7a30' : '#cc3300') + '">' + fmtMoney(acum) + '</td>'
+      + '<td style="text-align:center;color:var(--vw-grey-3)">' + (abierta ? '▲' : '▼') + '</td></tr>';
+    if (abierta) {
+      const its = s.items.slice().sort((a, b) => (a.tipo === b.tipo ? 0 : (a.tipo === 'ing' ? -1 : 1)));
+      let det = '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+      for (const it of its) det += '<tr style="border-top:1px solid #e3ecf5"><td style="padding:2px 6px">' + (it.tipo === 'ing' ? '💚' : '🔴') + ' ' + escapeHtml(it.desc) + '</td><td style="text-align:right;padding:2px 6px;color:' + (it.tipo === 'ing' ? '#0a7a30' : '#cc3300') + '">' + (it.tipo === 'ing' ? '+' : '-') + fmtMoney(it.monto) + '</td></tr>';
+      det += '</table>';
+      h += '<tr><td colspan="6" style="background:#f7faff;border-left:3px solid var(--vw-blue);padding:8px 14px">' + det + '</td></tr>';
+    }
+  }
+  h += '</tbody></table></div></div>';
+  h += '<div style="font-size:11px;color:var(--vw-grey-4);margin-top:10px">💚 Ingresos = cobros pendientes de las ventas vigentes (por vencimiento). 🔴 Egresos = facturas impagas a VW (por vencimiento). "Acumulado" = neto sumado semana a semana. Tocá una semana para ver el detalle.</div>';
+  cont.innerHTML = h;
 }
 
 // =======================================================================
