@@ -758,6 +758,36 @@ td .tes-nota { min-width: 90px; }
   background: var(--vw-blue); border: none; border-radius: 7px;
 }
 .nov-add:hover { background: var(--vw-blue-light); }
+
+/* Compras VW — en celular la grilla se vuelve tarjetas (usa los data-label) */
+@media (max-width: 600px) {
+  table.responsive-cards { min-width: 0 !important; }
+  table.responsive-cards thead { display: none; }
+  table.responsive-cards, table.responsive-cards tbody { display: block; width: 100%; }
+  table.responsive-cards tr.cvw-sum {
+    display: block; border: 1px solid var(--vw-grey-2); border-radius: 10px;
+    margin: 10px 0; padding: 10px 12px; background: #fff; box-shadow: 0 1px 4px rgba(0,30,80,0.05);
+  }
+  table.responsive-cards tr.cvw-sum td {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 0; border: none; text-align: right !important; gap: 12px; white-space: normal;
+  }
+  table.responsive-cards tr.cvw-sum td::before {
+    content: attr(data-label); font-size: 10.5px; font-weight: 600; color: var(--vw-grey-3);
+    text-transform: uppercase; letter-spacing: .4px; flex: 0 0 auto; text-align: left;
+  }
+  table.responsive-cards tr.cvw-sum td[data-label=""]::before,
+  table.responsive-cards tr.cvw-sum td[data-label="✓"]::before { content: ""; }
+  table.responsive-cards tr.cvw-sum td[data-label="Serie"] {
+    padding-top: 0; padding-bottom: 8px; margin-bottom: 6px;
+    border-bottom: 1px dashed var(--vw-grey-2); font-size: 14px;
+  }
+  table.responsive-cards tr.cvw-sum td[data-label="Serie"]::before { display: none; }
+  /* el detalle desplegable se muestra como bloque normal, no como tarjeta */
+  table.responsive-cards tr.cvw-det { display: block; }
+  table.responsive-cards tr.cvw-det td { display: block; text-align: left !important; }
+  .cards { grid-template-columns: 1fr 1fr; }
+}
 </style>
 </head>
 <body>
@@ -1150,7 +1180,7 @@ function _comprasCardsHtml() {
 let comprasVWData = null, comprasVWBusca = '', comprasVWFiltro = 'todas', comprasVWMes = '__todos__', comprasVWAbierta = '', comprasVWVence = '__todas__';
 let comprasVWSel = new Set();   // series seleccionadas para sumar deuda a VW
 let comprasVWPagando = '';      // serie con el pago inline abierto
-let comprasVWImpagas = false, comprasVWVendidas = false;   // toggles combinables
+let comprasVWImpagas = true, comprasVWVendidas = false;   // toggles combinables (en saldos arranca filtrando impagas)
 
 const _CVW_MESNUM = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 };
 function _cvwMesKey(mes) {
@@ -1415,7 +1445,7 @@ function renderComprasVW() {
     if (comprasVWVendidas && !c.pv) return false;        // toggle combinable
     if (q) { const blob = [c.serie, c.modelo_valeria, c.modeloOversoft, c.color, c.fc_numero, c.mes, (c.pv ? c.pv.numero + ' ' + c.pv.cliente : '')].join(' ').toLowerCase(); if (blob.indexOf(q) < 0) return false; }
     return true;
-  }).sort((a, b) => _cvwVenceKey(a.vence) - _cvwVenceKey(b.vence));   // orden por vto de pago a VW
+  }).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.serie || '').localeCompare(String(b.serie || '')));   // más nuevo → más viejo (por carga)
   const meses = Array.from(new Set(comprasVWData.compras.map(c => c.mes).filter(Boolean))).sort((a, b) => _cvwMesKey(b) - _cvwMesKey(a));
   // solo vtos de impagas (las pagadas no interesan y serían demasiadas opciones)
   const vtos = Array.from(new Set(comprasVWData.compras.filter(c => c.impaga).map(c => _cvwToISO(c.vence)).filter(Boolean))).sort((a, b) => _cvwVenceKey(a) - _cvwVenceKey(b));
