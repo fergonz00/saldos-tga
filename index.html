@@ -1301,7 +1301,7 @@ function _cvwSummaryRow(c) {
     pagoCell = '<span style="color:#cc3300;font-weight:700">impaga</span>' + (c.vence ? ' <small style="color:#cc3300">· vto ' + escapeHtml(_cvwFechaDisp(c.vence)) + '</small>' : '')
       + ' <button onclick="event.stopPropagation();iniciarPagoInline(\'' + c.serie + '\')" title="Registrar pago a VW" style="background:#0a7a30;color:#fff;border:0;border-radius:5px;padding:2px 8px;cursor:pointer;font-size:10px">pagar</button>';
   }
-  const onclickRow = hasPv ? ' onclick="toggleCompraVW(\'' + c.serie + '\')" style="cursor:pointer' + bg + '"' : ' style="cursor:default' + bg + '"';
+  const onclickRow = ' onclick="toggleCompraVW(\'' + c.serie + '\')" style="cursor:pointer' + bg + '"';
   let h = '<tr class="cvw-sum"' + onclickRow + '>'
     + '<td data-label="✓" onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox"' + (sel ? ' checked' : '') + ' onclick="event.stopPropagation()" onchange="toggleSelCompra(\'' + c.serie + '\',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>'
     + '<td data-label="Estado" style="white-space:nowrap;color:' + estCol + '">' + ico + ' <span style="font-size:11px">' + txt + '</span>' + conciliarInline + '</td>'
@@ -1313,9 +1313,9 @@ function _cvwSummaryRow(c) {
     + '<td data-label="Neto grav." style="text-align:right;white-space:nowrap">' + fmtPesos(c.netoGravado || 0) + '</td>'
     + '<td data-label="Bruto" style="text-align:right;white-space:nowrap;font-weight:700">' + fmtPesos(_cvwBruto(c)) + '</td>'
     + '<td data-label="Pago VW" style="white-space:nowrap">' + pagoCell + '</td>'
-    + '<td data-label="" style="text-align:center;color:var(--vw-grey-3)">' + (hasPv ? (abierta ? '▲' : '🧾 ▼') : '') + '</td>'
+    + '<td data-label="" style="text-align:center;color:var(--vw-grey-3)">' + (abierta ? '▲' : (hasPv ? '🧾 ▼' : '▼')) + '</td>'
     + '</tr>';
-  if (abierta && hasPv) h += _cvwDetailRow(c, k);
+  if (abierta) h += _cvwDetailRow(c, k);
   return h;
 }
 // Renglón DETALLE (editable) — aparece al desplegar.
