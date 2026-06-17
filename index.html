@@ -1449,15 +1449,15 @@ function renderComprasVW() {
   const meses = Array.from(new Set(comprasVWData.compras.map(c => c.mes).filter(Boolean))).sort((a, b) => _cvwMesKey(b) - _cvwMesKey(a));
   // solo vtos de impagas (las pagadas no interesan y serían demasiadas opciones)
   const vtos = Array.from(new Set(comprasVWData.compras.filter(c => c.impaga).map(c => _cvwToISO(c.vence)).filter(Boolean))).sort((a, b) => _cvwVenceKey(a) - _cvwVenceKey(b));
-  let h = '<div style="background:#f0f6ff;border:1px solid #cfe0f5;border-radius:10px;padding:12px;margin-bottom:12px">'
-    + '<b style="font-size:13px">+ Nueva factura de compra a VW</b>'
-    + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:flex-end">'
+  let h = '<details style="background:#f0f6ff;border:1px solid #cfe0f5;border-radius:10px;padding:10px 12px;margin-bottom:12px">'
+    + '<summary style="font-size:13px;font-weight:700;color:var(--vw-blue);cursor:pointer">➕ Cargar factura manual <span style="font-weight:400;color:var(--vw-grey-3)">(la carga normal es automática desde Reparto)</span></summary>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:flex-end">'
     + _cvwInput('nuevo_serie', 'Serie', 90) + _cvwInput('nuevo_mes', 'Mes', 110, 'text', _cvwMesActual())
     + _cvwInput('nuevo_modelo', 'Modelo', 180) + _cvwInput('nuevo_color', 'Color', 90)
     + _cvwInput('nuevo_fc', 'N° factura', 90) + _cvwInput('nuevo_fechafc', 'Fecha FC', 140, 'date')
     + _cvwInput('nuevo_vence', 'Vence', 140, 'date') + _cvwInput('nuevo_neto', 'Bruto $', 110, 'number')
     + '<button onclick="nuevaCompraVW()" style="background:var(--vw-blue);color:#fff;border:0;border-radius:6px;padding:7px 14px;cursor:pointer;font-weight:600">Agregar</button>'
-    + '</div></div>';
+    + '</div></details>';
   const chip = (val, lbl) => '<button onclick="comprasVWFiltro=\'' + val + '\';renderComprasVW()" style="padding:6px 12px;border:1px solid var(--vw-grey-2);border-radius:16px;cursor:pointer;font-size:13px;' + (comprasVWFiltro === val ? 'background:var(--vw-blue);color:#fff;border-color:var(--vw-blue);font-weight:700' : 'background:#fff;color:var(--vw-grey-3)') + '">' + lbl + '</button>';
   // toggles combinables (impagas / vendidas) — independientes del estado
   const tchip = (active, lbl, expr) => '<button onclick="' + expr + ';renderComprasVW()" style="padding:6px 12px;border:1px solid ' + (active ? '#cc6600' : 'var(--vw-grey-2)') + ';border-radius:16px;cursor:pointer;font-size:13px;' + (active ? 'background:#cc6600;color:#fff;font-weight:700' : 'background:#fff;color:var(--vw-grey-3)') + '">' + (active ? '✓ ' : '') + lbl + '</button>';
