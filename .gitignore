@@ -3,3 +3,9 @@ Thumbs.db
 *.log
 .vscode/
 .idea/
+
+# debug / scratch (no publicar en GitHub Pages)
+_check.js
+_informe_raw.json
+_compras_raw.json
+*.xlsx

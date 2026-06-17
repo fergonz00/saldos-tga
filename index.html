@@ -706,6 +706,52 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .ga-tag.curso      { background: var(--orange-soft); color: #92400E; }
 .ga-tag.reemplazo  { background: #EDE9FE; color: #5B21B6; }
 .ga-tag.compensa   { background: #CFFAFE; color: #155E75; }
+
+/* ---- Bancos editable (tesorería) ---- */
+.bancos-readonly { font-size: 12px; color: var(--vw-grey-4); margin: 4px 0 10px; }
+.tes-inp {
+  width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 13px;
+  border: 1px solid var(--vw-grey-2, #d7dee5); border-radius: 6px; background: #fff; color: #111;
+}
+.tes-inp:focus { outline: none; border-color: var(--vw-blue); box-shadow: 0 0 0 2px rgba(0,30,80,.12); }
+.tes-inp:disabled { background: #f6f8fa; color: #444; }
+.tes-monto { text-align: right; }
+.tes-moneda { width: auto; min-width: 56px; padding: 6px 4px; }
+td .tes-concepto { min-width: 180px; }
+td .tes-fecha { min-width: 90px; }
+td .tes-nota { min-width: 90px; }
+.tes-del {
+  border: none; background: transparent; color: #b91c1c; cursor: pointer;
+  font-size: 14px; font-weight: 700; padding: 2px 6px; border-radius: 6px; line-height: 1;
+}
+.tes-del:hover { background: var(--red-soft, #fee2e2); }
+.tes-add {
+  margin: 8px 0 2px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+  border: 1px dashed var(--vw-blue); border-radius: 8px; background: #fff; color: var(--vw-blue);
+}
+.tes-add:hover { background: rgba(0,30,80,.06); }
+.card.bad .value { color: #b91c1c; }
+.card.good .value { color: #047857; }
+
+/* ---- Personal · form de carga de novedades ---- */
+.nov-form {
+  border: 1px solid var(--vw-grey-2, #d7dee5); border-radius: 10px; padding: 12px;
+  margin-bottom: 14px; background: #fff;
+}
+.nov-form-title { font-size: 14px; font-weight: 700; color: var(--vw-blue); margin-bottom: 8px; }
+.nov-form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.nov-form-row input, .nov-form-row select {
+  padding: 7px 9px; font-size: 13px; border: 1px solid var(--vw-grey-2, #d7dee5);
+  border-radius: 7px; background: #fff; color: #111;
+}
+.nov-form-row input:focus, .nov-form-row select:focus { outline: none; border-color: var(--vw-blue); }
+.nov-form-row #novPersona { flex: 1; min-width: 140px; }
+.nov-form-row #novDetalle { flex: 1; min-width: 140px; }
+.nov-add {
+  padding: 7px 16px; font-size: 13px; font-weight: 700; cursor: pointer; color: #fff;
+  background: var(--vw-blue); border: none; border-radius: 7px;
+}
+.nov-add:hover { background: var(--vw-blue-light); }
 </style>
 </head>
 <body>
@@ -760,7 +806,7 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
     <section class="panel" id="panelBancos">
       <div class="toolbar">
         <div class="updated" id="updatedAtInforme">—</div>
-        <button class="refresh" id="btnRefreshInforme" onclick="loadInforme(true)">Actualizar</button>
+        <button class="refresh" id="btnRefreshInforme" onclick="loadBancos(true)">Actualizar</button>
       </div>
       <div id="bancosContent"></div>
     </section>
@@ -792,14 +838,17 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 // =======================================================================
 const SHARED_COOKIE = 'tga_session';
 const SHARED_DOMAIN = '.titogonzalez.online';
-const USUARIOS_PERMITIDOS = ['fngonzalez', 'fgonzalez', 'marianom'];
+const USUARIOS_PERMITIDOS = ['fngonzalez', 'fgonzalez', 'cgonzalez', 'marianom', 'vreyna'];
 
 // Quién ve todo el sitio (admins) y qué solapas ve cada usuario restringido.
 // Un usuario que NO esté en ADMIN_USERS sólo ve las solapas de TAB_ACCESS.
-const ADMIN_USERS = ['fngonzalez', 'fgonzalez'];
+const ADMIN_USERS = ['fngonzalez', 'fgonzalez', 'cgonzalez'];
 const TAB_ACCESS = {
   marianom: ['personal'],   // MarianoM (carga las guardias): sólo Personal
+  vreyna:   ['bancos'],     // Valeria Reyna (tesorería): sólo Bancos
 };
+// Quién puede editar la carga de Bancos (tesorería) — los mismos que la ven.
+const BANCOS_EDITORES = ['fngonzalez', 'fgonzalez', 'cgonzalez', 'vreyna'];
 // Quién puede editar el cronograma de guardias
 const GUARDIAS_EDITORES = ['fngonzalez', 'fgonzalez', 'marianom'];
 
@@ -814,6 +863,9 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 // Estado in-memory
 let lastCompras = null;
 let lastInforme = null;
+let tesoreriaItems = null;     // filas de tesoreria_items (Bancos, fuente: Supabase)
+let bancosDeudaVW = null;      // deuda en fábrica VW, calculada de compras_vw (impagas)
+let personalNov = null;        // novedades del personal general (saldos_novedades)
 let filterStatus = 'impagas'; // 'impagas' | 'todas' | 'pagadas'
 let colSearch = '';
 let colVence = ''; // string ISO yyyy-mm-dd o 'sin'
@@ -946,7 +998,7 @@ function setTab(tab) {
   if (el) el.classList.add('active');
   if (tab === 'compras' && !lastCompras) loadCompras();
   if (tab === 'proxvtos') renderProxVtos();
-  if (tab === 'bancos')   ensureInforme(renderBancos);
+  if (tab === 'bancos')   loadBancos();
   if (tab === 'personal') {
     const sub = document.querySelector('.subtab.active')?.dataset.sub || 'novedades';
     setPersonalSub(sub);
@@ -960,7 +1012,7 @@ function setPersonalSub(sub) {
   const map = { novedades: 'subNovedades', guardias: 'subGuardias', historial: 'subHistorial' };
   const el = document.getElementById(map[sub]);
   if (el) el.classList.add('active');
-  if (sub === 'novedades') ensureInforme(renderPersonal);
+  if (sub === 'novedades') loadPersonalNov();
   if (sub === 'guardias')  renderGuardias();
   if (sub === 'historial') renderHistorial();
 }
@@ -2014,6 +2066,302 @@ function renderSeccionBanco(sec) {
       </div>
     </div>
   `;
+}
+
+// =======================================================================
+// BANCOS · carga editable (fuente: Supabase tesoreria_items + deuda VW de compras_vw)
+// =======================================================================
+const BANCOS_SECCIONES = [
+  { code: 'DISPONIBILIDADES', titulo: '💵 Disponibilidades' },
+  { code: 'DISP_FUTURAS',     titulo: '📄 Disp. futuras (impuestos / cheques diferidos)' },
+  { code: 'CHEQDIF',          titulo: '🧾 Detalle cheques diferidos' },
+  { code: 'DISP_VW',          titulo: '🚗 Saldos disponibles VW Credit' },
+];
+
+function bancosPuedeEditar() {
+  const s = getSharedCookie() || {};
+  return BANCOS_EDITORES.includes(s.usuario);
+}
+
+async function loadBancos(forzar) {
+  const wrap = document.getElementById('bancosContent');
+  const btn = document.getElementById('btnRefreshInforme');
+  if (btn) { btn.disabled = true; btn.textContent = 'Cargando...'; }
+  if (wrap && (forzar || !tesoreriaItems)) {
+    wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando tesorería...</div></div>';
+  }
+  try {
+    const [items, deuda] = await Promise.all([
+      sbFetch('tesoreria_items?select=*&order=seccion,orden,id'),
+      bancosFetchDeudaVW(),
+    ]);
+    tesoreriaItems = items || [];
+    bancosDeudaVW = deuda;
+    const upd = document.getElementById('updatedAtInforme');
+    if (upd) upd.textContent = 'Actualizado: ' + new Date().toLocaleString('es-AR');
+    renderBancosUI();
+  } catch (e) {
+    console.error(e);
+    if (wrap) wrap.innerHTML = `<div class="errbox"><div class="ico">⚠️</div>
+      <div class="ttl">No se pudo cargar Bancos</div>
+      <div class="det">${escapeHtml(e.message || String(e))}</div></div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Actualizar'; }
+  }
+}
+
+// Deuda en fábrica VW = suma de importe_saldo de las compras impagas (sin fecha de
+// pago). Mismo número que la planilla "DEUDAS EN FABRICA · Volkswagen (unidades)".
+async function bancosFetchDeudaVW() {
+  try {
+    const rows = await sbFetch('compras_vw?select=importe_saldo&fecha_pago_vw=is.null') || [];
+    return rows.reduce((acc, r) => acc + (Number(r.importe_saldo) || 0), 0);
+  } catch (e) { return null; }
+}
+
+function parseMonto(v) {
+  if (v === '' || v == null) return null;
+  if (typeof v === 'number') return v;
+  let s = String(v).trim().replace(/[^\d.,-]/g, '');
+  if (!s) return null;
+  const hasC = s.indexOf(',') > -1, hasD = s.indexOf('.') > -1;
+  if (hasC && hasD) s = s.replace(/\./g, '').replace(',', '.');
+  else if (hasC) s = s.replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+// Totales que dependen sólo del estado en memoria (para refrescar sin re-render).
+function bancosTotales() {
+  const items = tesoreriaItems || [];
+  const sumSec = (code, mon) => items
+    .filter(r => r.seccion === code && (mon ? r.moneda === mon : r.moneda !== 'USD'))
+    .reduce((a, r) => a + (Number(r.monto) || 0), 0);
+  const dispARS = sumSec('DISPONIBILIDADES');
+  const dispUSD = sumSec('DISPONIBILIDADES', 'USD');
+  const dispVW  = sumSec('DISP_VW');
+  const deudaVW = Number(bancosDeudaVW) || 0;
+  return { dispARS, dispUSD, dispVW, deudaVW, netoVW: dispVW - deudaVW };
+}
+
+function renderBancosUI() {
+  const wrap = document.getElementById('bancosContent');
+  if (!wrap) return;
+  const items = tesoreriaItems || [];
+  const editar = bancosPuedeEditar();
+  const t = bancosTotales();
+
+  const cards = `
+    <div class="cards" style="grid-template-columns: repeat(auto-fit,minmax(170px,1fr));">
+      <div class="card"><div class="label">Disponibilidades $</div><div class="value" id="bk-dispARS">${fmtMoney(t.dispARS)}</div><div class="sub" id="bk-dispUSD">${t.dispUSD ? '+ U$S ' + fmtMoney(t.dispUSD) : ''}</div></div>
+      <div class="card"><div class="label">Disponible VW Credit</div><div class="value" id="bk-dispVW">${fmtMoney(t.dispVW)}</div></div>
+      <div class="card bad"><div class="label">Deuda en fábrica VW</div><div class="value" id="bk-deudaVW">${fmtMoney(t.deudaVW)}</div><div class="sub">auto · Compras VW impagas</div></div>
+      <div class="card ${t.netoVW < 0 ? 'bad' : 'good'}"><div class="label">Neto VW (disp − deuda)</div><div class="value" id="bk-netoVW">${fmtMoney(t.netoVW)}</div></div>
+    </div>`;
+
+  const secHtml = BANCOS_SECCIONES.map(sec => renderBancoSeccionEditable(sec, items, editar)).join('');
+
+  const deudaHtml = `
+    <div class="bank-section">
+      <div class="sec-head"><h3>🏭 Deudas en fábrica VW</h3><span class="sec-amount" id="bk-deudaVW2">${fmtMoney(t.deudaVW)}</span></div>
+      <div class="table-scroll"><table><tbody>
+        <tr><td>Volkswagen Arg. y Financiera (unidades)<span class="sub-desc">se calcula solo de Compras VW impagas</span></td>
+            <td class="num importe">${fmtMoney(t.deudaVW)}</td></tr>
+        <tr class="total-row"><td>Total deuda VW − disponible</td><td class="num importe ${t.netoVW < 0 ? 'neg' : ''}" id="bk-netoVW2">${fmtMoney(t.netoVW)}</td></tr>
+      </tbody></table></div>
+    </div>`;
+
+  const aviso = editar ? '' : '<div class="bancos-readonly">👁️ Vista de sólo lectura.</div>';
+  wrap.innerHTML = cards + aviso + secHtml + deudaHtml;
+}
+
+// Refresca sólo los totales (sin reconstruir inputs → no se pierde el foco al tabular).
+function bancosRefreshTotals() {
+  const t = bancosTotales();
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('bk-dispARS', fmtMoney(t.dispARS));
+  set('bk-dispUSD', t.dispUSD ? '+ U$S ' + fmtMoney(t.dispUSD) : '');
+  set('bk-dispVW', fmtMoney(t.dispVW));
+  set('bk-deudaVW', fmtMoney(t.deudaVW));
+  set('bk-deudaVW2', fmtMoney(t.deudaVW));
+  set('bk-netoVW', fmtMoney(t.netoVW));
+  set('bk-netoVW2', fmtMoney(t.netoVW));
+  // totales por sección
+  BANCOS_SECCIONES.forEach(sec => {
+    const filas = (tesoreriaItems || []).filter(r => r.seccion === sec.code);
+    const ars = filas.filter(r => r.moneda !== 'USD').reduce((a, r) => a + (Number(r.monto) || 0), 0);
+    const usd = filas.filter(r => r.moneda === 'USD').reduce((a, r) => a + (Number(r.monto) || 0), 0);
+    set('bk-sec-' + sec.code, usd ? fmtMoney(ars) + '  ·  U$S ' + fmtMoney(usd) : fmtMoney(ars));
+  });
+}
+
+function renderBancoSeccionEditable(sec, items, editar) {
+  const filas = items.filter(r => r.seccion === sec.code);
+  const totalARS = filas.filter(r => r.moneda !== 'USD').reduce((a, r) => a + (Number(r.monto) || 0), 0);
+  const totalUSD = filas.filter(r => r.moneda === 'USD').reduce((a, r) => a + (Number(r.monto) || 0), 0);
+  const dis = editar ? '' : 'disabled';
+
+  const rowsHtml = filas.map(r => `
+    <tr data-id="${r.id}">
+      <td><input class="tes-inp tes-concepto" ${dis} value="${escapeHtml(r.concepto || '')}" placeholder="concepto" onchange="tesSave(${r.id},'concepto',this)"></td>
+      <td class="num"><input class="tes-inp tes-monto" ${dis} inputmode="decimal" value="${r.monto != null ? r.monto : ''}" placeholder="0" onchange="tesSave(${r.id},'monto',this)"></td>
+      <td><select class="tes-inp tes-moneda" ${dis} onchange="tesSave(${r.id},'moneda',this)"><option value="ARS" ${r.moneda !== 'USD' ? 'selected' : ''}>$</option><option value="USD" ${r.moneda === 'USD' ? 'selected' : ''}>U$S</option></select></td>
+      <td><input class="tes-inp tes-fecha" ${dis} value="${escapeHtml(r.fecha_ref || '')}" placeholder="venc." onchange="tesSave(${r.id},'fecha_ref',this)"></td>
+      <td><input class="tes-inp tes-nota" ${dis} value="${escapeHtml(r.nota || '')}" placeholder="nota" onchange="tesSave(${r.id},'nota',this)"></td>
+      ${editar ? `<td><button class="tes-del" title="Borrar fila" onclick="tesDel(${r.id})">✕</button></td>` : ''}
+    </tr>`).join('');
+
+  const totalStr = totalUSD ? fmtMoney(totalARS) + '  ·  U$S ' + fmtMoney(totalUSD) : fmtMoney(totalARS);
+
+  return `
+    <div class="bank-section">
+      <div class="sec-head"><h3>${escapeHtml(sec.titulo)}</h3><span class="sec-amount" id="bk-sec-${sec.code}">${totalStr}</span></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Concepto</th><th class="num">Monto</th><th></th><th>Venc./fecha</th><th>Nota</th>${editar ? '<th></th>' : ''}</tr></thead>
+        <tbody>${rowsHtml || `<tr><td colspan="6" style="color:var(--vw-grey-3)">Sin filas todavía.</td></tr>`}</tbody>
+      </table></div>
+      ${editar ? `<button class="tes-add" onclick="tesAdd('${sec.code}')">+ agregar fila</button>` : ''}
+    </div>`;
+}
+
+async function tesSave(id, campo, el) {
+  if (!bancosPuedeEditar()) return;
+  let valor = el.value;
+  if (campo === 'monto') valor = parseMonto(valor);
+  else valor = (valor === '' ? null : valor);
+  const s = getSharedCookie() || {};
+  const body = { updated_at: new Date().toISOString(), updated_by: s.usuario || '' };
+  body[campo] = valor;
+  try {
+    await sbFetch('tesoreria_items?id=eq.' + id, { method: 'PATCH', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify(body) });
+    const it = (tesoreriaItems || []).find(r => r.id === id);
+    if (it) it[campo] = valor;
+    bancosRefreshTotals();   // refresca totales sin perder el foco
+  } catch (e) { alert('No se pudo guardar: ' + (e.message || e)); }
+}
+
+async function tesAdd(seccion) {
+  if (!bancosPuedeEditar()) return;
+  const s = getSharedCookie() || {};
+  const maxOrden = (tesoreriaItems || []).filter(r => r.seccion === seccion).reduce((m, r) => Math.max(m, Number(r.orden) || 0), 0);
+  try {
+    const res = await sbFetch('tesoreria_items', { method: 'POST', headers: { 'Prefer': 'return=representation' }, body: JSON.stringify([{ seccion, orden: maxOrden + 1, moneda: 'ARS', updated_by: s.usuario || '' }]) });
+    if (res && res[0]) tesoreriaItems.push(res[0]);
+    renderBancosUI();
+  } catch (e) { alert('No se pudo agregar: ' + (e.message || e)); }
+}
+
+async function tesDel(id) {
+  if (!bancosPuedeEditar()) return;
+  if (!confirm('¿Borrar esta fila?')) return;
+  try {
+    await sbFetch('tesoreria_items?id=eq.' + id, { method: 'DELETE', headers: { 'Prefer': 'return=minimal' } });
+    tesoreriaItems = (tesoreriaItems || []).filter(r => r.id !== id);
+    renderBancosUI();
+  } catch (e) { alert('No se pudo borrar: ' + (e.message || e)); }
+}
+
+// =======================================================================
+// PERSONAL · novedades con carga propia → saldos_novedades (ya no la planilla)
+// =======================================================================
+function personalPuedeCargar() {
+  const s = getSharedCookie() || {};
+  return ADMIN_USERS.includes(s.usuario) || GUARDIAS_EDITORES.includes(s.usuario);
+}
+
+async function loadPersonalNov() {
+  const wrap = document.getElementById('personalContent');
+  if (!wrap) return;
+  if (!tesoreriaItems && !personalNov) {
+    wrap.innerHTML = '<div class="loading"><div class="spinner"></div><div>Cargando novedades...</div></div>';
+  }
+  if (!guardiasLoaded && !guardiasSinTabla) {
+    try { await loadGuardiasOverrides(); } catch (e) {}
+  }
+  try {
+    const desde = fechaISO(new Date(Date.now() - 14 * 86400000));
+    personalNov = await sbFetch('saldos_novedades?area=eq.general&fecha=gte.' + desde + '&order=fecha.desc,id.desc') || [];
+  } catch (e) { personalNov = []; }
+  renderPersonalNov();
+}
+
+function renderPersonalNov() {
+  const wrap = document.getElementById('personalContent');
+  if (!wrap) return;
+  const puede = personalPuedeCargar();
+  const hoy = hoyISO();
+  const nov = personalNov || [];
+
+  const nombres = GUARDIAS_VENDEDORES_ALL.map(v => `<option value="${escapeHtml(cap(v))}">`).join('');
+  const form = puede ? `
+    <div class="nov-form">
+      <div class="nov-form-title">➕ Cargar novedad del personal</div>
+      <div class="nov-form-row">
+        <input type="date" id="novFecha" value="${hoy}">
+        <select id="novTipo">
+          <option value="falta">Ausente</option>
+          <option value="llegada_tarde">Llegó tarde</option>
+          <option value="otro">Otro</option>
+        </select>
+        <input id="novPersona" list="novNombres" placeholder="Persona" autocomplete="off">
+        <datalist id="novNombres">${nombres}</datalist>
+        <input id="novDetalle" placeholder="Motivo / hora (opcional)">
+        <button class="nov-add" onclick="novAgregar()">Agregar</button>
+      </div>
+    </div>` : '';
+
+  const guardiasHtml = renderNovedadesGuardias();
+
+  const porFecha = {};
+  nov.forEach(n => { (porFecha[n.fecha] = porFecha[n.fecha] || []).push(n); });
+  const fechas = Object.keys(porFecha).sort().reverse();
+  const TIPO_ICON = { falta: '⚠️', llegada_tarde: '⏰', otro: '📌' };
+  const TIPO_LBL = { falta: 'Ausente', llegada_tarde: 'Tarde', otro: '' };
+  const cargadasHtml = fechas.map(f => {
+    const esHoy = f === hoy;
+    const items = porFecha[f].map(n => `
+      <div class="personal-item ${esHoy ? 'nov-hoy' : ''}">
+        <span class="p-txt"><span class="nov-ico">${TIPO_ICON[n.tipo] || '📌'}</span> <b>${escapeHtml(n.persona || '')}</b>${TIPO_LBL[n.tipo] ? ' — ' + TIPO_LBL[n.tipo] : ''}${n.detalle ? ' (' + escapeHtml(n.detalle) + ')' : ''}</span>
+        ${puede ? `<button class="tes-del" title="Borrar" onclick="novBorrar(${n.id})">✕</button>` : ''}
+      </div>`).join('');
+    return `<div class="personal-subhead">${dowName(f)} ${fechaDM(f)}${esHoy ? ' · HOY' : ''}</div>${items}`;
+  }).join('');
+
+  const vacio = '<div class="empty"><div class="ico">👥</div><div style="color:var(--vw-grey-4);font-weight:600">Sin novedades cargadas</div></div>';
+  const cuerpo = guardiasHtml + (cargadasHtml || (guardiasHtml ? '' : vacio));
+  wrap.innerHTML = form + `<div class="personal-wrap"><div class="personal-body">${cuerpo}</div></div>`;
+}
+
+async function novAgregar() {
+  if (!personalPuedeCargar()) return;
+  const fecha = document.getElementById('novFecha').value || hoyISO();
+  const tipo = document.getElementById('novTipo').value;
+  const persona = (document.getElementById('novPersona').value || '').trim();
+  const detalle = (document.getElementById('novDetalle').value || '').trim();
+  if (!persona) { alert('Falta indicar la persona.'); return; }
+  const s = getSharedCookie() || {};
+  const ev = {
+    fecha, area: 'general', tipo, persona, detalle: detalle || null, origen: 'portal',
+    dedup_key: [fecha, 'general', tipo, persona.toLowerCase()].join('|'),
+  };
+  try {
+    await sbFetch('saldos_novedades?on_conflict=dedup_key', {
+      method: 'POST', headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify([ev]),
+    });
+    document.getElementById('novPersona').value = '';
+    document.getElementById('novDetalle').value = '';
+    loadPersonalNov();
+  } catch (e) { alert('No se pudo cargar: ' + (e.message || e)); }
+}
+
+async function novBorrar(id) {
+  if (!personalPuedeCargar()) return;
+  if (!confirm('¿Borrar esta novedad?')) return;
+  try {
+    await sbFetch('saldos_novedades?id=eq.' + id, { method: 'DELETE', headers: { 'Prefer': 'return=minimal' } });
+    personalNov = (personalNov || []).filter(n => n.id !== id);
+    renderPersonalNov();
+  } catch (e) { alert('No se pudo borrar: ' + (e.message || e)); }
 }
 
 // =======================================================================
