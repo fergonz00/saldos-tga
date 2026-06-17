@@ -1370,7 +1370,7 @@ function _cvwDetailRow(c, k) {
   const detalle = '<div style="display:flex;flex-wrap:wrap;gap:10px">'
     + fld('mes', 'Mes', c.mes) + fld('modelo_valeria', 'Modelo', c.modelo_valeria) + fld('color', 'Color', c.color)
     + fld('fc_numero', 'N° factura', c.fc_numero) + fldD('fecha_fc', 'Fecha FC', c.fecha_fc) + fldD('vence', 'Vence', c.vence)
-    + fld('importe_saldo', 'Bruto $ (c/imp.)', _cvwBruto(c), 'number') + fldD('fecha_pago_vw', 'Fecha pago VW', c.fecha_pago_vw)
+    + fld('importe_saldo', 'Bruto $ (c/imp.)', _cvwBruto(c), 'number')
     + ro('Neto (s/IVA)', fmtPesos(c.netoGravado)) + ro('IVA contenido (' + (Math.round(c.ivaRate * 1000) / 10) + '%)', fmtPesos(c.iva))
     + '</div>';
   let venta = '';
@@ -1456,7 +1456,6 @@ function renderComprasVW() {
     + _cvwInput('nuevo_modelo', 'Modelo', 180) + _cvwInput('nuevo_color', 'Color', 90)
     + _cvwInput('nuevo_fc', 'N° factura', 90) + _cvwInput('nuevo_fechafc', 'Fecha FC', 140, 'date')
     + _cvwInput('nuevo_vence', 'Vence', 140, 'date') + _cvwInput('nuevo_neto', 'Bruto $', 110, 'number')
-    + _cvwInput('nuevo_fechapago', 'Fecha pago VW', 140, 'date')
     + '<button onclick="nuevaCompraVW()" style="background:var(--vw-blue);color:#fff;border:0;border-radius:6px;padding:7px 14px;cursor:pointer;font-weight:600">Agregar</button>'
     + '</div></div>';
   const chip = (val, lbl) => '<button onclick="comprasVWFiltro=\'' + val + '\';renderComprasVW()" style="padding:6px 12px;border:1px solid var(--vw-grey-2);border-radius:16px;cursor:pointer;font-size:13px;' + (comprasVWFiltro === val ? 'background:var(--vw-blue);color:#fff;border-color:var(--vw-blue);font-weight:700' : 'background:#fff;color:var(--vw-grey-3)') + '">' + lbl + '</button>';
