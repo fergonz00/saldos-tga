@@ -793,7 +793,7 @@ td .tes-nota { min-width: 90px; }
   table.responsive-cards td.cvw-stick { position: static !important; }
 }
 
-/* Compras VW — grilla con scroll propio: títulos y columnas (Estado/Serie) fijos */
+/* Compras VW — grilla con scroll propio: título fijo arriba y solo la Serie fija al costado */
 .cvw-box {
   background: white; border-radius: var(--radius); box-shadow: var(--shadow);
   overflow: auto; max-height: calc(100vh - 150px);
@@ -804,15 +804,10 @@ td .tes-nota { min-width: 90px; }
 @media (min-width: 601px) {
   /* títulos fijos al scrollear hacia abajo (dentro del box) */
   table.responsive-cards thead th { position: sticky; top: 0; z-index: 3; }
-  /* columnas fijas al scrollear a los costados */
-  table.responsive-cards td.cvw-stick { position: sticky; z-index: 2; background: var(--row-bg, #fff); }
-  table.responsive-cards thead th.cvw-stick { z-index: 5; background: var(--vw-grey-1); }
-  .cvw-stick1 { left: 0; }
-  .cvw-stick2 { left: 34px; }
-  .cvw-stick3 { left: 184px; box-shadow: 4px 0 5px -3px rgba(0,30,80,.18); }
-  table.responsive-cards td.cvw-stick1, table.responsive-cards th.cvw-stick1 { width: 34px; min-width: 34px; }
-  table.responsive-cards td.cvw-stick2, table.responsive-cards th.cvw-stick2 { width: 150px; min-width: 150px; }
-  table.responsive-cards td.cvw-stick3, table.responsive-cards th.cvw-stick3 { width: 130px; min-width: 130px; }
+  /* solo la columna Serie queda fija al scrollear a los costados */
+  table.responsive-cards td.cvw-stick { position: sticky; left: 0; z-index: 2; background: var(--row-bg, #fff); box-shadow: 4px 0 5px -3px rgba(0,30,80,.18); }
+  table.responsive-cards thead th.cvw-stick { left: 0; z-index: 5; background: var(--vw-grey-1); }
+  table.responsive-cards td.cvw-stick, table.responsive-cards th.cvw-stick { min-width: 150px; }
 }
 </style>
 </head>
@@ -1371,12 +1366,12 @@ function _cvwSummaryRow(c) {
   }
   const onclickRow = ' onclick="toggleCompraVW(\'' + c.serie + '\')" style="cursor:pointer' + bg + '"';
   let h = '<tr class="cvw-sum"' + onclickRow + '>'
-    + '<td data-label="✓" class="cvw-stick cvw-stick1" onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox"' + (sel ? ' checked' : '') + ' onclick="event.stopPropagation()" onchange="toggleSelCompra(\'' + c.serie + '\',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>'
-    + '<td data-label="Estado" class="cvw-stick cvw-stick2" style="white-space:nowrap;color:' + estCol + '">' + ico + ' <span style="font-size:11px">' + txt + '</span>' + conciliarInline + '</td>'
-    + '<td data-label="Serie" class="cvw-stick cvw-stick3"><b>' + escapeHtml(c.serie) + '</b>' + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>' : '') + '</td>'
+    + '<td data-label="✓" onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox"' + (sel ? ' checked' : '') + ' onclick="event.stopPropagation()" onchange="toggleSelCompra(\'' + c.serie + '\',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>'
+    + '<td data-label="Serie" class="cvw-stick"><span title="' + txt + '" style="color:' + estCol + ';font-size:13px">' + ico + '</span> <b>' + escapeHtml(c.serie) + '</b>' + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>' : '') + conciliarInline + '</td>'
     + '<td data-label="Mes">' + escapeHtml(c.mes || '—') + '</td>'
     + '<td data-label="Modelo">' + escapeHtml(c.modeloOficial || c.modelo_valeria || '—') + '</td>'
     + '<td data-label="Color">' + escapeHtml(c.color || '—') + '</td>'
+    + '<td data-label="Compra VW" style="white-space:nowrap">' + escapeHtml(c.fecha_fc ? _cvwFechaDisp(c.fecha_fc) : '—') + '</td>'
     + '<td data-label="Vto VW" style="white-space:nowrap">' + escapeHtml(c.vence ? _cvwFechaDisp(c.vence) : '—') + '</td>'
     + '<td data-label="Neto grav." style="text-align:right;white-space:nowrap">' + fmtPesos(c.netoGravado || 0) + '</td>'
     + '<td data-label="Total" style="text-align:right;white-space:nowrap;font-weight:700">' + fmtPesos(_cvwBruto(c)) + (c.tieneDesglose && Math.abs(c.descuadre) > 1 ? ' <span title="El desglose no suma el total (descuadre $' + Math.round(Math.abs(c.descuadre)).toLocaleString('es-AR') + ')" style="color:#cc3300">⚠</span>' : '') + '</td>'
@@ -1547,8 +1542,8 @@ function renderComprasVW() {
   h += '<div class="cvw-topscroll" id="cvwTopScroll"><div id="cvwTopScrollInner"></div></div>';
   h += '<div class="cvw-box" id="cvwBox"><table class="responsive-cards" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:840px">';
   h += '<thead style="white-space:nowrap"><tr>'
-    + '<th class="cvw-stick cvw-stick1"></th><th class="cvw-stick cvw-stick2" style="text-align:left">Estado</th><th class="cvw-stick cvw-stick3" style="text-align:left">Serie</th><th style="text-align:left">Mes</th><th style="text-align:left">Modelo</th><th style="text-align:left">Color</th>'
-    + '<th style="text-align:left">Vto VW</th><th style="text-align:right">Neto grav.</th><th style="text-align:right">Total</th><th style="text-align:left">Pago VW</th><th></th></tr></thead><tbody>';
+    + '<th></th><th class="cvw-stick" style="text-align:left">Serie</th><th style="text-align:left">Mes</th><th style="text-align:left">Modelo</th><th style="text-align:left">Color</th>'
+    + '<th style="text-align:left">Compra VW</th><th style="text-align:left">Vto VW</th><th style="text-align:right">Neto grav.</th><th style="text-align:right">Total</th><th style="text-align:left">Pago VW</th><th></th></tr></thead><tbody>';
   for (const c of rows) h += _cvwSummaryRow(c);
   if (!rows.length) h += '<tr><td colspan="11" class="empty">Sin facturas para ese filtro.</td></tr>';
   h += '</tbody></table></div>';
