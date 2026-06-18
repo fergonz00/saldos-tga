@@ -787,6 +787,32 @@ td .tes-nota { min-width: 90px; }
   table.responsive-cards tr.cvw-det { display: block; }
   table.responsive-cards tr.cvw-det td { display: block; text-align: left !important; }
   .cards { grid-template-columns: 1fr 1fr; }
+  /* en celular se desactiva el scroll fijo / columnas fijas (vista de tarjetas) */
+  .cvw-box { max-height: none !important; overflow: visible !important; box-shadow: none !important; }
+  .cvw-topscroll { display: none !important; }
+  table.responsive-cards td.cvw-stick { position: static !important; }
+}
+
+/* Compras VW — grilla con scroll propio: títulos y columnas (Estado/Serie) fijos */
+.cvw-box {
+  background: white; border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow: auto; max-height: calc(100vh - 150px);
+}
+/* barra horizontal duplicada arriba (sincronizada) para no bajar a scrollear */
+.cvw-topscroll { overflow-x: auto; overflow-y: hidden; height: 16px; margin-bottom: 4px; }
+.cvw-topscroll > div { height: 1px; }
+@media (min-width: 601px) {
+  /* títulos fijos al scrollear hacia abajo (dentro del box) */
+  table.responsive-cards thead th { position: sticky; top: 0; z-index: 3; }
+  /* columnas fijas al scrollear a los costados */
+  table.responsive-cards td.cvw-stick { position: sticky; z-index: 2; background: var(--row-bg, #fff); }
+  table.responsive-cards thead th.cvw-stick { z-index: 5; background: var(--vw-grey-1); }
+  .cvw-stick1 { left: 0; }
+  .cvw-stick2 { left: 34px; }
+  .cvw-stick3 { left: 184px; box-shadow: 4px 0 5px -3px rgba(0,30,80,.18); }
+  table.responsive-cards td.cvw-stick1, table.responsive-cards th.cvw-stick1 { width: 34px; min-width: 34px; }
+  table.responsive-cards td.cvw-stick2, table.responsive-cards th.cvw-stick2 { width: 150px; min-width: 150px; }
+  table.responsive-cards td.cvw-stick3, table.responsive-cards th.cvw-stick3 { width: 130px; min-width: 130px; }
 }
 </style>
 </head>
@@ -1244,17 +1270,27 @@ function _cvwBruto(c) {
 function _cvwDebe(c) {
   return c.impaga ? _cvwBruto(c) : 0;
 }
-// El campo cargable es el BRUTO (total c/impuestos). Saco el IVA CONTENIDO hacia
-// atrás: neto = bruto / (1+IVA) ; IVA = bruto − neto.
+// El TOTAL de la factura (importe_saldo) y el desglose (neto gravado, IVA, IIBB
+// Entre Ríos / CABA / Bs As) los carga Valeria A MANO. La suma del desglose tiene
+// que dar el total; si difiere, se marca el descuadre. Para filas viejas sin
+// desglose manual, neto/IVA se derivan del bruto como fallback (solo lectura).
 function _cvwCalc(c) {
   const rate = (c.iva_rate != null && c.iva_rate !== '') ? Number(c.iva_rate) : _cvwIva(c.modeloOficial || c.modelo_valeria);
-  const bruto = _cvwBruto(c);
-  const neto = (1 + rate) > 0 ? bruto / (1 + rate) : 0;
+  const bruto = _cvwBruto(c);   // = total factura (importe_saldo) o fallback
   c.brutoCalc = Math.round(bruto * 100) / 100;
-  c.netoGravado = Math.round(neto * 100) / 100;
   c.ivaRate = rate;
-  c.iva = Math.round((bruto - neto) * 100) / 100;   // IVA contenido
-  c.control = c.brutoCalc;   // "Control" pasa a ser el bruto (== total con impuestos)
+  const netoMan = (c.neto != null && c.neto !== '') ? Number(c.neto) : null;
+  const ivaMan = (c.iva_monto != null && c.iva_monto !== '') ? Number(c.iva_monto) : null;
+  c.iibbEr = Number(c.iibb_er) || 0;
+  c.iibbCaba = Number(c.iibb_caba) || 0;
+  c.iibbBsas = Number(c.iibb_bsas) || 0;
+  c.netoGravado = (netoMan != null) ? Math.round(netoMan * 100) / 100 : Math.round((bruto / (1 + rate)) * 100) / 100;
+  c.iva = (ivaMan != null) ? Math.round(ivaMan * 100) / 100 : Math.round((bruto - c.netoGravado) * 100) / 100;
+  // ¿cargó algún componente a mano? entonces validamos que cuadre con el total.
+  c.tieneDesglose = (netoMan != null) || (ivaMan != null) || !!c.iibbEr || !!c.iibbCaba || !!c.iibbBsas;
+  c.sumDesglose = Math.round((c.netoGravado + c.iva + c.iibbEr + c.iibbCaba + c.iibbBsas) * 100) / 100;
+  c.descuadre = Math.round((bruto - c.sumDesglose) * 100) / 100;   // total − suma (≈0 = cuadra)
+  c.control = c.brutoCalc;   // "Control" pasa a ser el total (== suma del desglose si cuadra)
 }
 
 async function loadComprasVW(forzar) {
@@ -1313,11 +1349,13 @@ function _cvwSummaryRow(c) {
   const sel = comprasVWSel.has(c.serie);
   const hasPv = !!c.pv;
   const pagando = (comprasVWPagando === c.serie);
-  // fondo: vendida (PV) resaltada celeste; seleccionada ámbar; abierta celeste fuerte
-  let bg = '';
-  if (abierta) bg = ';background:#e3eeff';
-  else if (sel) bg = ';background:#fff7e6';
-  else if (hasPv) bg = ';background:#f0f6ff';
+  // fondo: vendida (PV) resaltada celeste; seleccionada ámbar; abierta celeste fuerte.
+  // Se pasa por la variable --row-bg para que las columnas fijas (sticky) copien el mismo color.
+  let rowbg = '#fff';
+  if (abierta) rowbg = '#e3eeff';
+  else if (sel) rowbg = '#fff7e6';
+  else if (hasPv) rowbg = '#f0f6ff';
+  const bg = ';--row-bg:' + rowbg + ';background:var(--row-bg)';
   const conciliarInline = (c.estado === 'sin_conciliar') ? ' <button onclick="event.stopPropagation();conciliarCompraVW(\'' + c.serie + '\')" title="Conciliar con Oversoft" style="background:#0a7a30;color:#fff;border:0;border-radius:5px;padding:2px 7px;cursor:pointer;font-size:10px">✓</button>' : '';
   // celda Pago VW: pagada (verde) / inline para registrar pago / impaga + botón 💵
   let pagoCell;
@@ -1333,15 +1371,15 @@ function _cvwSummaryRow(c) {
   }
   const onclickRow = ' onclick="toggleCompraVW(\'' + c.serie + '\')" style="cursor:pointer' + bg + '"';
   let h = '<tr class="cvw-sum"' + onclickRow + '>'
-    + '<td data-label="✓" onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox"' + (sel ? ' checked' : '') + ' onclick="event.stopPropagation()" onchange="toggleSelCompra(\'' + c.serie + '\',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>'
-    + '<td data-label="Estado" style="white-space:nowrap;color:' + estCol + '">' + ico + ' <span style="font-size:11px">' + txt + '</span>' + conciliarInline + '</td>'
-    + '<td data-label="Serie"><b>' + escapeHtml(c.serie) + '</b>' + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>' : '') + '</td>'
+    + '<td data-label="✓" class="cvw-stick cvw-stick1" onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox"' + (sel ? ' checked' : '') + ' onclick="event.stopPropagation()" onchange="toggleSelCompra(\'' + c.serie + '\',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>'
+    + '<td data-label="Estado" class="cvw-stick cvw-stick2" style="white-space:nowrap;color:' + estCol + '">' + ico + ' <span style="font-size:11px">' + txt + '</span>' + conciliarInline + '</td>'
+    + '<td data-label="Serie" class="cvw-stick cvw-stick3"><b>' + escapeHtml(c.serie) + '</b>' + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>' : '') + '</td>'
     + '<td data-label="Mes">' + escapeHtml(c.mes || '—') + '</td>'
     + '<td data-label="Modelo">' + escapeHtml(c.modeloOficial || c.modelo_valeria || '—') + '</td>'
     + '<td data-label="Color">' + escapeHtml(c.color || '—') + '</td>'
     + '<td data-label="Vto VW" style="white-space:nowrap">' + escapeHtml(c.vence ? _cvwFechaDisp(c.vence) : '—') + '</td>'
     + '<td data-label="Neto grav." style="text-align:right;white-space:nowrap">' + fmtPesos(c.netoGravado || 0) + '</td>'
-    + '<td data-label="Bruto" style="text-align:right;white-space:nowrap;font-weight:700">' + fmtPesos(_cvwBruto(c)) + '</td>'
+    + '<td data-label="Total" style="text-align:right;white-space:nowrap;font-weight:700">' + fmtPesos(_cvwBruto(c)) + (c.tieneDesglose && Math.abs(c.descuadre) > 1 ? ' <span title="El desglose no suma el total (descuadre $' + Math.round(Math.abs(c.descuadre)).toLocaleString('es-AR') + ')" style="color:#cc3300">⚠</span>' : '') + '</td>'
     + '<td data-label="Pago VW" style="white-space:nowrap">' + pagoCell + '</td>'
     + '<td data-label="" style="text-align:center;color:var(--vw-grey-3)">' + (abierta ? '▲' : (hasPv ? '🧾 ▼' : '▼')) + '</td>'
     + '</tr>';
@@ -1367,11 +1405,26 @@ function _cvwDetailRow(c, k) {
       + (dif && c.estado !== 'conciliada' ? ' <span style="color:#cc6600">⚠ difiere de lo cargado</span>' : '')
       + '</div>';
   }
+  // Campo de impuesto (carga manual): además de guardar al salir (onchange),
+  // recalcula en vivo el cuadre mientras Valeria tipea (oninput).
+  const fldT = (campo, label, val) => '<div style="display:flex;flex-direction:column;gap:2px"><label style="font-size:11px;color:var(--vw-grey-3)">' + label + '</label>'
+    + '<input type="number" step="0.01" id="cvw_' + campo + '_' + k + '" value="' + (val == null || val === '' ? '' : escapeHtml(String(val))) + '" oninput="_cvwRecalcUI(\'' + k + '\')"' + auto + ' style="padding:6px 8px;border:1px solid var(--vw-grey-2);border-radius:6px;font-size:13px;width:130px;max-width:100%;text-align:right"></div>';
   const detalle = '<div style="display:flex;flex-wrap:wrap;gap:10px">'
     + fld('mes', 'Mes', c.mes) + fld('modelo_valeria', 'Modelo', c.modelo_valeria) + fld('color', 'Color', c.color)
     + fld('fc_numero', 'N° factura', c.fc_numero) + fldD('fecha_fc', 'Fecha FC', c.fecha_fc) + fldD('vence', 'Vence', c.vence)
-    + fld('importe_saldo', 'Bruto $ (c/imp.)', _cvwBruto(c), 'number')
-    + ro('Neto (s/IVA)', fmtPesos(c.netoGravado)) + ro('IVA contenido (' + (Math.round(c.ivaRate * 1000) / 10) + '%)', fmtPesos(c.iva))
+    + '</div>'
+    + '<div style="margin-top:12px;padding:11px 13px;background:#fff;border:1px solid #cfe0f5;border-radius:8px">'
+    + '<div style="font-size:13px;font-weight:700;color:var(--vw-blue);margin-bottom:8px">🧾 Factura VW · carga manual (todo a mano, exacto)</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">'
+    + fldT('importe_saldo', 'Total factura $', (c.importe_saldo == null ? '' : c.importe_saldo))
+    + '<span style="font-size:18px;color:var(--vw-grey-3);align-self:center;padding:0 2px">=</span>'
+    + fldT('neto', 'Neto gravado $', (c.neto == null ? '' : c.neto))
+    + fldT('iva_monto', 'IVA $', (c.iva_monto == null ? '' : c.iva_monto))
+    + fldT('iibb_er', 'IIBB Entre Ríos $', (c.iibb_er == null ? '' : c.iibb_er))
+    + fldT('iibb_caba', 'IIBB CABA $', (c.iibb_caba == null ? '' : c.iibb_caba))
+    + fldT('iibb_bsas', 'IIBB Bs As $', (c.iibb_bsas == null ? '' : c.iibb_bsas))
+    + '</div>'
+    + '<div id="cvwrec_' + k + '" style="margin-top:9px;font-size:13px"></div>'
     + '</div>';
   let venta = '';
   if (c.pv) {
@@ -1491,24 +1544,61 @@ function renderComprasVW() {
     + '<input type="date" id="cvwbulkfecha" value="' + _cvwHoyISO() + '" style="padding:6px 8px;border:1px solid var(--vw-grey-2);border-radius:6px;font-size:12px">'
     + '<button onclick="pagarSeleccionadasCompraVW()"' + (selImpagasN ? '' : ' disabled') + ' style="background:' + (selImpagasN ? '#0a7a30' : '#9bbfa8') + ';color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:' + (selImpagasN ? 'pointer' : 'default') + ';font-size:12px;font-weight:600">Pagar seleccionadas' + (selImpagasN ? ' (' + selImpagasN + ')' : '') + '</button>'
     + '</div>';
-  h += '<div class="table-wrap"><div class="table-scroll"><table class="responsive-cards" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:840px">';
+  h += '<div class="cvw-topscroll" id="cvwTopScroll"><div id="cvwTopScrollInner"></div></div>';
+  h += '<div class="cvw-box" id="cvwBox"><table class="responsive-cards" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:840px">';
   h += '<thead style="white-space:nowrap"><tr>'
-    + '<th></th><th style="text-align:left">Estado</th><th style="text-align:left">Serie</th><th style="text-align:left">Mes</th><th style="text-align:left">Modelo</th><th style="text-align:left">Color</th>'
-    + '<th style="text-align:left">Vto VW</th><th style="text-align:right">Neto grav.</th><th style="text-align:right">Bruto</th><th style="text-align:left">Pago VW</th><th></th></tr></thead><tbody>';
+    + '<th class="cvw-stick cvw-stick1"></th><th class="cvw-stick cvw-stick2" style="text-align:left">Estado</th><th class="cvw-stick cvw-stick3" style="text-align:left">Serie</th><th style="text-align:left">Mes</th><th style="text-align:left">Modelo</th><th style="text-align:left">Color</th>'
+    + '<th style="text-align:left">Vto VW</th><th style="text-align:right">Neto grav.</th><th style="text-align:right">Total</th><th style="text-align:left">Pago VW</th><th></th></tr></thead><tbody>';
   for (const c of rows) h += _cvwSummaryRow(c);
   if (!rows.length) h += '<tr><td colspan="11" class="empty">Sin facturas para ese filtro.</td></tr>';
-  h += '</tbody></table></div></div>';
-  h += '<div style="font-size:11px;color:var(--vw-grey-3);margin-top:10px">Tocá un renglón para ver/editar el detalle completo (impuestos, fechas, conciliación). Tocá afuera para cerrarlo. Valeria carga la unidad apenas VW factura (🟡 sin Oversoft); cuando aparece en Oversoft (1-2 días, por serie) pasa a 🔵 y, al "✓ Conciliar", queda el nombre de Oversoft (🟢). IVA, percepciones y Control se calculan solos.</div>';
+  h += '</tbody></table></div>';
+  h += '<div style="font-size:11px;color:var(--vw-grey-3);margin-top:10px">Tocá un renglón para ver/editar el detalle completo (impuestos, fechas, conciliación). Tocá afuera para cerrarlo. Valeria carga la unidad apenas VW factura (🟡 sin Oversoft); cuando aparece en Oversoft (1-2 días, por serie) pasa a 🔵 y, al "✓ Conciliar", queda el nombre de Oversoft (🟢). El total de la factura y el desglose (neto gravado, IVA, IIBB Entre Ríos / CABA / Bs As) se cargan a mano; si no cuadran, se marca el descuadre.</div>';
   cont.innerHTML = _comprasCardsHtml() + h;
+  _cvwSyncTopScroll();
+  if (comprasVWAbierta) _cvwRecalcUI(comprasVWAbierta.replace(/[^A-Za-z0-9]/g, '_'));
+}
+// Sincroniza la barra horizontal superior con el scroll del box (y viceversa),
+// y ajusta su ancho al de la tabla, para poder ir izquierda/derecha sin bajar.
+function _cvwSyncTopScroll() {
+  const box = document.getElementById('cvwBox');
+  const top = document.getElementById('cvwTopScroll');
+  const inner = document.getElementById('cvwTopScrollInner');
+  if (!box || !top || !inner) return;
+  const tbl = box.querySelector('table');
+  if (tbl) inner.style.width = tbl.scrollWidth + 'px';
+  if (!box._cvwSynced) {
+    box._cvwSynced = true;
+    let lock = false;
+    box.addEventListener('scroll', function () { if (lock) return; lock = true; top.scrollLeft = box.scrollLeft; lock = false; });
+    top.addEventListener('scroll', function () { if (lock) return; lock = true; box.scrollLeft = top.scrollLeft; lock = false; });
+  }
+}
+// Recalcula en vivo el cuadre del desglose de la factura (total = neto + IVA + IIBB…).
+function _cvwRecalcUI(k) {
+  const el = document.getElementById('cvwrec_' + k);
+  if (!el) return;
+  const g = id => { const e = document.getElementById('cvw_' + id + '_' + k); return e ? (parseFloat(e.value) || 0) : 0; };
+  const total = g('importe_saldo');
+  const sum = g('neto') + g('iva_monto') + g('iibb_er') + g('iibb_caba') + g('iibb_bsas');
+  const diff = Math.round((total - sum) * 100) / 100;
+  const ar = n => Math.round(n).toLocaleString('es-AR');
+  if (!total && !sum) { el.innerHTML = '<span style="color:var(--vw-grey-3)">Cargá el total y el desglose para validar que cuadre.</span>'; return; }
+  if (Math.abs(diff) < 1) {
+    el.innerHTML = '<span style="color:#0a7a30;font-weight:700">✓ Cuadra</span> <span style="color:var(--vw-grey-3)">— neto + impuestos = total ($' + ar(sum) + ')</span>';
+  } else {
+    el.innerHTML = '<span style="color:#cc3300;font-weight:700">⚠ Descuadre: $' + ar(Math.abs(diff)) + '</span> '
+      + '<span style="color:var(--vw-grey-3)">— suma del desglose $' + ar(sum) + ' ' + (diff > 0 ? 'es menor que' : 'supera al') + ' total $' + ar(total) + '</span>';
+  }
 }
 
 async function guardarCompraVW(serie) {
   const k = serie.replace(/[^A-Za-z0-9]/g, '_');
   const c = (comprasVWData.compras || []).find(x => x.serie === serie); if (!c) return;
   const campos = {};
-  for (const f of ['mes', 'modelo_valeria', 'color', 'fc_numero', 'fecha_fc', 'vence', 'importe_saldo', 'fecha_pago_vw']) {
+  const NUM = ['importe_saldo', 'neto', 'iva_monto', 'iibb_er', 'iibb_caba', 'iibb_bsas'];
+  for (const f of ['mes', 'modelo_valeria', 'color', 'fc_numero', 'fecha_fc', 'vence', 'fecha_pago_vw', 'importe_saldo', 'neto', 'iva_monto', 'iibb_er', 'iibb_caba', 'iibb_bsas']) {
     const el = document.getElementById('cvw_' + f + '_' + k);
-    if (el) { campos[f] = el.value.trim(); c[f] = (f === 'importe_saldo') ? (el.value.trim() === '' ? null : Number(el.value)) : el.value.trim(); }
+    if (el) { campos[f] = el.value.trim(); c[f] = NUM.indexOf(f) >= 0 ? (el.value.trim() === '' ? null : Number(el.value)) : el.value.trim(); }
   }
   _cvwCalc(c); renderComprasVW();
   try { const r = await _postCompraVW({ accion: 'setcompravw', serie: serie, campos: campos }); if (r && r.error) throw new Error(r.error); }
