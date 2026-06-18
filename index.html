@@ -796,7 +796,7 @@ td .tes-nota { min-width: 90px; }
 /* Compras VW — grilla con scroll propio: título fijo arriba y solo la Serie fija al costado */
 .cvw-box {
   background: white;
-  overflow: auto; max-height: calc(100vh - 120px);
+  overflow: visible;   /* la tabla fluye con la página (scroll del navegador), no en una caja */
 }
 /* Tarjetas Floor Plan compactas: las 4 en un renglón, chicas, para que la tabla
    arranque más arriba. */
@@ -810,15 +810,15 @@ td .tes-nota { min-width: 90px; }
 .cvw-cards .card .sub { display: none; }
 .cvw-cards .dispvw-inp { font-size: 15px; }
 @media (max-width: 600px) { .cvw-cards { grid-template-columns: 1fr 1fr; } }
-/* barra horizontal duplicada arriba (sincronizada) para no bajar a scrollear */
-.cvw-topscroll { overflow-x: auto; overflow-y: hidden; height: 16px; margin-bottom: 4px; }
-.cvw-topscroll > div { height: 1px; }
+/* La barra horizontal duplicada ya no se usa: la tabla fluye con la página. */
+.cvw-topscroll { display: none; }
 @media (min-width: 601px) {
-  /* títulos fijos al scrollear hacia abajo (dentro del box) */
-  table.responsive-cards thead th { position: sticky; top: 0; z-index: 3; }
-  /* solo la columna Serie queda fija al scrollear a los costados */
+  /* Títulos CONGELADOS al viewport (tipo Excel): al bajar la página, la fila de
+     títulos queda fija justo debajo del header azul (~60px). */
+  table.responsive-cards thead th { position: sticky; top: 60px; z-index: 3; background: #fff; box-shadow: inset 0 -1px 0 var(--vw-grey-2); }
+  /* La columna Serie queda fija al costado (freeze pane) al scrollear horizontal. */
   table.responsive-cards td.cvw-stick { position: sticky; left: 0; z-index: 2; background: var(--row-bg, #fff); box-shadow: 4px 0 5px -3px rgba(0,30,80,.18); }
-  table.responsive-cards thead th.cvw-stick { left: 0; z-index: 5; background: var(--vw-grey-1); }
+  table.responsive-cards thead th.cvw-stick { left: 0; top: 60px; z-index: 5; background: #fff; }
   table.responsive-cards td.cvw-stick, table.responsive-cards th.cvw-stick { min-width: 150px; }
 }
 </style>
@@ -1313,22 +1313,64 @@ async function loadComprasVW(forzar) {
     });
   }
   const cont = document.getElementById('comprasVWContent');
-  if (cont && !comprasVWData) cont.innerHTML = '<div class="empty">Cargando facturas (Oversoft)…</div>';
+
+  // Primer pintado INSTANTÁNEO con lo último guardado en este navegador; después se
+  // refresca en background (stale-while-revalidate). Así no esperás cada vez.
+  if (!comprasVWData && !forzar) {
+    const cached = _cvwCacheGet();
+    if (cached && cached.d) {
+      comprasVWData = cached.d;
+      if (cached.disp != null) comprasDispVW = cached.disp;
+      (comprasVWData.compras || []).forEach(_cvwCalc);
+      renderComprasVW();
+      _cvwFetch(true, true);      // en background, sin spinner; muestra "Actualizando…"
+      return;
+    }
+  }
+
+  if (cont && !comprasVWData) cont.innerHTML = '<div class="empty">Cargando facturas…</div>';
+  // 1ra vez sin cache: usa el cache del backend (más rápido). "Actualizar" pide fresco.
+  await _cvwFetch(!!comprasVWData, !!forzar);
+}
+
+function _cvwEstado(txt) {
+  const up = document.getElementById('updatedAtComprasVW');
+  if (up) up.textContent = txt;
+}
+function _cvwCacheGet() {
+  try { const r = localStorage.getItem('saldos_cvw_cache'); return r ? JSON.parse(r) : null; } catch { return null; }
+}
+function _cvwCacheSet() {
+  try { localStorage.setItem('saldos_cvw_cache', JSON.stringify({ d: comprasVWData, disp: comprasDispVW })); } catch {}
+}
+// Trae compras_vw del backend de Gestión y repinta. silent = si falla, deja lo que
+// ya se ve (no rompe). fresh = pide datos frescos (saltea el cache del Apps Script)
+// para detectar cambios. El campo cargable es el BRUTO (total c/imp.): _cvwCalc
+// recalcula neto/IVA hacia atrás en cada fila para que el desglose sea consistente.
+async function _cvwFetch(silent, fresh) {
+  _cvwEstado('Actualizando…');
+  const btn = document.getElementById('btnRefresh');
+  if (btn) btn.disabled = true;
   try {
-    const url = GESTION_URL + '?token=' + encodeURIComponent(GESTION_TOKEN) + '&tipo=comprasvw' + (forzar ? '&fresh=1' : '');
+    const url = GESTION_URL + '?token=' + encodeURIComponent(GESTION_TOKEN) + '&tipo=comprasvw' + (fresh ? '&fresh=1' : '');
     const res = await fetch(url);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     comprasVWData = data;
-    // El campo cargable es el BRUTO (total c/imp.). Recalculo neto/IVA hacia atrás
-    // en cada fila para que el desglose sea consistente con el bruto, no con el
-    // neto que devuelve el backend.
     (comprasVWData.compras || []).forEach(_cvwCalc);
     comprasDispVW = await _loadDispVW();
-    const up = document.getElementById('updatedAtComprasVW');
-    if (up && data.updatedAt) up.textContent = 'Compras a VW · ' + data.total + ' facturas';
+    _cvwCacheSet();
     renderComprasVW();
-  } catch (e) { console.error('loadComprasVW:', e); if (cont) cont.innerHTML = '<div class="empty">Error cargando: ' + escapeHtml(e.message) + '</div>'; }
+    const hora = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    _cvwEstado('Actualizado ' + hora + (data.total != null ? ' · ' + data.total + ' facturas' : ''));
+  } catch (e) {
+    console.error('loadComprasVW:', e);
+    const cont = document.getElementById('comprasVWContent');
+    if (!silent && !comprasVWData) { if (cont) cont.innerHTML = '<div class="empty">Error cargando: ' + escapeHtml(e.message) + '</div>'; }
+    else _cvwEstado('Sin conexión · mostrando lo último guardado');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function _postCompraVW(obj) {
@@ -1565,31 +1607,9 @@ function renderComprasVW() {
 }
 // Sincroniza la barra horizontal superior con el scroll del box (y viceversa),
 // y ajusta su ancho al de la tabla, para poder ir izquierda/derecha sin bajar.
-function _cvwSyncTopScroll() {
-  const box = document.getElementById('cvwBox');
-  const top = document.getElementById('cvwTopScroll');
-  const inner = document.getElementById('cvwTopScrollInner');
-  if (!box || !top || !inner) return;
-  const tbl = box.querySelector('table');
-  if (tbl) inner.style.width = tbl.scrollWidth + 'px';
-  if (!box._cvwSynced) {
-    box._cvwSynced = true;
-    let lock = false;
-    box.addEventListener('scroll', function () { if (lock) return; lock = true; top.scrollLeft = box.scrollLeft; lock = false; });
-    top.addEventListener('scroll', function () { if (lock) return; lock = true; box.scrollLeft = top.scrollLeft; lock = false; });
-  }
-  _cvwFitBox();
-  if (!window._cvwFitBound) { window._cvwFitBound = true; window.addEventListener('resize', _cvwFitBox); }
-}
-// La grilla llena desde su tope hasta el fondo de la pantalla: la tabla "sigue
-// hasta abajo" y scrollea ahí adentro con los títulos fijos (no en una caja chica).
-function _cvwFitBox() {
-  const box = document.getElementById('cvwBox');
-  if (!box) return;
-  if (window.innerWidth <= 600) { box.style.maxHeight = ''; return; }  // mobile = tarjetas
-  const top = box.getBoundingClientRect().top;
-  box.style.maxHeight = Math.max(260, window.innerHeight - top - 10) + 'px';
-}
+// La tabla fluye con la página (scroll del navegador), sin scroll interno ni barra
+// superior: los títulos quedan congelados al viewport vía CSS (position:sticky).
+function _cvwSyncTopScroll() { /* no-op */ }
 // Recalcula en vivo el cuadre del desglose de la factura (total = neto + IVA + IIBB…).
 function _cvwRecalcUI(k) {
   const el = document.getElementById('cvwrec_' + k);
