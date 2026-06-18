@@ -795,9 +795,21 @@ td .tes-nota { min-width: 90px; }
 
 /* Compras VW — grilla con scroll propio: título fijo arriba y solo la Serie fija al costado */
 .cvw-box {
-  background: white; border-radius: var(--radius); box-shadow: var(--shadow);
-  overflow: auto; max-height: calc(100vh - 150px);
+  background: white;
+  overflow: auto; max-height: calc(100vh - 120px);
 }
+/* Tarjetas Floor Plan compactas: las 4 en un renglón, chicas, para que la tabla
+   arranque más arriba. */
+.cvw-cards {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px; margin-bottom: 12px;
+}
+.cvw-cards .card { padding: 8px 12px; }
+.cvw-cards .card .label { font-size: 9.5px; margin-bottom: 2px; letter-spacing: .4px; }
+.cvw-cards .card .value { font-size: 15px; }
+.cvw-cards .card .sub { display: none; }
+.cvw-cards .dispvw-inp { font-size: 15px; }
+@media (max-width: 600px) { .cvw-cards { grid-template-columns: 1fr 1fr; } }
 /* barra horizontal duplicada arriba (sincronizada) para no bajar a scrollear */
 .cvw-topscroll { overflow-x: auto; overflow-y: hidden; height: 16px; margin-bottom: 4px; }
 .cvw-topscroll > div { height: 1px; }
@@ -1185,7 +1197,7 @@ function _comprasCardsHtml() {
   const dispFP = FLOOR_PLAN_FIJO - deuda;
   const dispVW = Number(comprasDispVW) || 0;
   const editable = BANCOS_EDITORES.includes((getSharedCookie() || {}).usuario);
-  return '<div class="cards">'
+  return '<div class="cards cvw-cards">'
     + '<div class="card"><div class="label">Floor Plan</div><div class="value">' + fmtMoney(FLOOR_PLAN_FIJO) + '</div><div class="sub">Línea de crédito con VW (fijo)</div></div>'
     + '<div class="card warn"><div class="label">Deuda Floor Plan</div><div class="value">' + fmtMoney(deuda) + '</div><div class="sub">' + impagas.length + ' unidad' + (impagas.length === 1 ? '' : 'es') + ' impaga' + (impagas.length === 1 ? '' : 's') + ' (lo que debemos a VW)</div></div>'
     + '<div class="card ' + (dispFP >= 0 ? 'good' : 'bad') + '"><div class="label">Disponible Floor Plan</div><div class="value">' + fmtMoney(dispFP) + '</div><div class="sub">Floor Plan − deuda</div></div>'
@@ -1547,7 +1559,6 @@ function renderComprasVW() {
   for (const c of rows) h += _cvwSummaryRow(c);
   if (!rows.length) h += '<tr><td colspan="11" class="empty">Sin facturas para ese filtro.</td></tr>';
   h += '</tbody></table></div>';
-  h += '<div style="font-size:11px;color:var(--vw-grey-3);margin-top:10px">Tocá un renglón para ver/editar el detalle completo (impuestos, fechas, conciliación). Tocá afuera para cerrarlo. Valeria carga la unidad apenas VW factura (🟡 sin Oversoft); cuando aparece en Oversoft (1-2 días, por serie) pasa a 🔵 y, al "✓ Conciliar", queda el nombre de Oversoft (🟢). El total de la factura y el desglose (neto gravado, IVA, IIBB Entre Ríos / CABA / Bs As) se cargan a mano; si no cuadran, se marca el descuadre.</div>';
   cont.innerHTML = _comprasCardsHtml() + h;
   _cvwSyncTopScroll();
   if (comprasVWAbierta) _cvwRecalcUI(comprasVWAbierta.replace(/[^A-Za-z0-9]/g, '_'));
@@ -1567,6 +1578,17 @@ function _cvwSyncTopScroll() {
     box.addEventListener('scroll', function () { if (lock) return; lock = true; top.scrollLeft = box.scrollLeft; lock = false; });
     top.addEventListener('scroll', function () { if (lock) return; lock = true; box.scrollLeft = top.scrollLeft; lock = false; });
   }
+  _cvwFitBox();
+  if (!window._cvwFitBound) { window._cvwFitBound = true; window.addEventListener('resize', _cvwFitBox); }
+}
+// La grilla llena desde su tope hasta el fondo de la pantalla: la tabla "sigue
+// hasta abajo" y scrollea ahí adentro con los títulos fijos (no en una caja chica).
+function _cvwFitBox() {
+  const box = document.getElementById('cvwBox');
+  if (!box) return;
+  if (window.innerWidth <= 600) { box.style.maxHeight = ''; return; }  // mobile = tarjetas
+  const top = box.getBoundingClientRect().top;
+  box.style.maxHeight = Math.max(260, window.innerHeight - top - 10) + 'px';
 }
 // Recalcula en vivo el cuadre del desglose de la factura (total = neto + IVA + IIBB…).
 function _cvwRecalcUI(k) {
