@@ -1409,7 +1409,8 @@ function _cvwSummaryRow(c) {
   // celda Pago VW: pagada (verde) / inline para registrar pago / impaga + botón 💵
   let pagoCell;
   if (!c.impaga) {
-    pagoCell = '<span style="color:#0a7a30">' + escapeHtml(c.fecha_pago_vw ? _cvwFechaDisp(c.fecha_pago_vw) : 'pagada') + '</span>';
+    pagoCell = '<span style="color:#0a7a30">' + escapeHtml(c.fecha_pago_vw ? _cvwFechaDisp(c.fecha_pago_vw) : 'pagada') + '</span>'
+      + ' <button onclick="event.stopPropagation();deshacerPagoCompraVW(\'' + c.serie + '\')" title="Deshacer pago · vuelve a quedar impaga" style="background:none;border:1px solid var(--vw-grey-2);border-radius:5px;padding:1px 6px;cursor:pointer;font-size:11px;color:var(--vw-grey-3)">↩ deshacer</button>';
   } else if (pagando) {
     pagoCell = '<span onclick="event.stopPropagation()"><input type="date" id="cvwpagoinline_' + k + '" value="' + _cvwHoyISO() + '" onclick="event.stopPropagation()" style="padding:3px 5px;border:1px solid var(--vw-grey-2);border-radius:5px;font-size:12px">'
       + ' <button onclick="event.stopPropagation();pagarCompraVW(\'' + c.serie + '\')" style="background:#0a7a30;color:#fff;border:0;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:11px">✓</button>'
@@ -1532,11 +1533,20 @@ function limpiarSelCompra() {
   comprasVWSel.clear();
   renderComprasVW();
 }
+// Buscador: re-renderiza pero devuelve el foco y el cursor al input (renderComprasVW
+// reconstruye todo el innerHTML y destruía el <input>, por eso se "trababa" al tipear).
+function onComprasVWBusca(v, el) {
+  const start = el ? el.selectionStart : null;
+  comprasVWBusca = v;
+  renderComprasVW();
+  const ne = document.getElementById('cvwBuscaInput');
+  if (ne) { ne.focus(); if (start != null) { try { ne.setSelectionRange(start, start); } catch (e) {} } }
+}
 function renderComprasVW() {
   const cont = document.getElementById('comprasVWContent');
   if (!cont) return;
   if (!comprasVWData || !Array.isArray(comprasVWData.compras)) { cont.innerHTML = '<div class="empty">Sin datos.</div>'; return; }
-  const q = comprasVWBusca.trim().toLowerCase();
+  const qTokens = comprasVWBusca.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const rows = comprasVWData.compras.filter(c => {
     if (comprasVWMes && comprasVWMes !== '__todos__' && String(c.mes || '') !== comprasVWMes) return false;
     if (comprasVWVence && comprasVWVence !== '__todas__' && (_cvwToISO(c.vence) !== comprasVWVence || !c.impaga)) return false;
@@ -1545,7 +1555,7 @@ function renderComprasVW() {
     if (comprasVWFiltro === 'conciliadas' && c.estado !== 'conciliada') return false;
     if (comprasVWImpagas && !c.impaga) return false;     // toggle combinable
     if (comprasVWVendidas && !c.pv) return false;        // toggle combinable
-    if (q) { const blob = [c.serie, c.modelo_valeria, c.modeloOversoft, c.color, c.fc_numero, c.mes, (c.pv ? c.pv.numero + ' ' + c.pv.cliente : '')].join(' ').toLowerCase(); if (blob.indexOf(q) < 0) return false; }
+    if (qTokens.length) { const blob = [c.serie, c.modelo_valeria, c.modeloOversoft, c.color, c.fc_numero, c.mes, (c.pv ? c.pv.numero + ' ' + c.pv.cliente : '')].join(' ').toLowerCase(); if (!qTokens.every(t => blob.indexOf(t) > -1)) return false; }
     return true;
   }).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.serie || '').localeCompare(String(b.serie || '')));   // más nuevo → más viejo (por carga)
   const meses = Array.from(new Set(comprasVWData.compras.map(c => c.mes).filter(Boolean))).sort((a, b) => _cvwMesKey(b) - _cvwMesKey(a));
@@ -1577,7 +1587,7 @@ function renderComprasVW() {
     + chip('todas', 'Todas') + chip('conciliadas', '🟢 Conciliadas') + chip('sinconciliar', '🔵 A conciliar') + chip('cargadas', '🟡 Sin Oversoft')
     + '<span style="width:1px;height:22px;background:var(--vw-grey-2);margin:0 2px"></span>'
     + tchip(comprasVWVendidas, '🧾 Vendidas', 'comprasVWVendidas=!comprasVWVendidas') + tchip(comprasVWImpagas, '🔴 Impagas', 'comprasVWImpagas=!comprasVWImpagas')
-    + '<input type="text" placeholder="🔍 serie, modelo, FC…" value="' + escapeHtml(comprasVWBusca) + '" oninput="comprasVWBusca=this.value;renderComprasVW()" style="padding:7px 12px;border:1px solid var(--vw-grey-2);border-radius:8px;min-width:180px;font-size:13px">'
+    + '<input type="text" id="cvwBuscaInput" placeholder="🔍 serie, modelo, FC…" value="' + escapeHtml(comprasVWBusca) + '" oninput="onComprasVWBusca(this.value, this)" style="padding:7px 12px;border:1px solid var(--vw-grey-2);border-radius:8px;min-width:180px;font-size:13px">'
     + '<span style="font-size:12px;color:var(--vw-grey-3)">' + rows.length + ' facturas</span>'
     + '</div>';
   // barra de selección/suma de deuda a VW
@@ -1660,6 +1670,14 @@ async function pagarCompraVW(serie) {
   c.fecha_pago_vw = fecha; c.impaga = false; comprasVWPagando = ''; renderComprasVW();
   try { const r = await _postCompraVW({ accion: 'setcompravw', serie: serie, campos: { fecha_pago_vw: fecha } }); if (r && r.error) throw new Error(r.error); }
   catch (e) { alert('No se pudo registrar el pago: ' + e.message); }
+}
+async function deshacerPagoCompraVW(serie) {
+  const c = (comprasVWData.compras || []).find(x => x.serie === serie); if (!c) return;
+  if (!confirm('¿Deshacer el pago de la serie ' + serie + '?\nVuelve a quedar IMPAGA (suma a la deuda con VW).')) return;
+  const prevFecha = c.fecha_pago_vw, prevImpaga = c.impaga;
+  c.fecha_pago_vw = ''; c.impaga = true; renderComprasVW();
+  try { const r = await _postCompraVW({ accion: 'setcompravw', serie: serie, campos: { fecha_pago_vw: '' } }); if (r && r.error) throw new Error(r.error); }
+  catch (e) { c.fecha_pago_vw = prevFecha; c.impaga = prevImpaga; renderComprasVW(); alert('No se pudo deshacer el pago: ' + e.message); }
 }
 async function pagarSeleccionadasCompraVW() {
   const el = document.getElementById('cvwbulkfecha');
