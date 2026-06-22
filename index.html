@@ -1699,7 +1699,7 @@ async function conciliarCompraVW(serie) {
   await loadComprasVW(true);
 }
 async function borrarCompraVW(serie) {
-  if (!confirm('¿Eliminar la factura de compra de la serie ' + serie + '?')) return;
+  if (!confirm('¿Estás seguro de ELIMINAR la factura de compra de la serie ' + serie + '?\n\nEsta acción no se puede deshacer.')) return;
   try { const r = await _postCompraVW({ accion: 'delcompravw', serie: serie }); if (r && r.error) throw new Error(r.error); }
   catch (e) { alert('No se pudo eliminar: ' + e.message); return; }
   await loadComprasVW(true);
@@ -2956,7 +2956,7 @@ async function tesAdd(seccion) {
 
 async function tesDel(id) {
   if (!bancosPuedeEditar()) return;
-  if (!confirm('¿Borrar esta fila?')) return;
+  if (!confirm('¿Estás seguro de borrar esta fila?\n\nEsta acción no se puede deshacer.')) return;
   try {
     await sbFetch('tesoreria_items?id=eq.' + id, { method: 'DELETE', headers: { 'Prefer': 'return=minimal' } });
     tesoreriaItems = (tesoreriaItems || []).filter(r => r.id !== id);
@@ -3059,7 +3059,7 @@ async function novAgregar() {
 
 async function novBorrar(id) {
   if (!personalPuedeCargar()) return;
-  if (!confirm('¿Borrar esta novedad?')) return;
+  if (!confirm('¿Estás seguro de borrar esta novedad?\n\nEsta acción no se puede deshacer.')) return;
   try {
     await sbFetch('saldos_novedades?id=eq.' + id, { method: 'DELETE', headers: { 'Prefer': 'return=minimal' } });
     personalNov = (personalNov || []).filter(n => n.id !== id);
