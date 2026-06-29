@@ -1422,7 +1422,8 @@ function _cvwSummaryRow(c) {
   const onclickRow = ' onclick="toggleCompraVW(\'' + c.serie + '\')" style="cursor:pointer' + bg + '"';
   let h = '<tr class="cvw-sum"' + onclickRow + '>'
     + '<td data-label="✓" onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox"' + (sel ? ' checked' : '') + ' onclick="event.stopPropagation()" onchange="toggleSelCompra(\'' + c.serie + '\',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>'
-    + '<td data-label="Serie" class="cvw-stick"><span title="' + txt + '" style="color:' + estCol + ';font-size:13px">' + ico + '</span> <b>' + escapeHtml(c.serie) + '</b>' + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>' : '') + conciliarInline + '</td>'
+    + '<td data-label="Serie" class="cvw-stick"><span title="' + txt + '" style="color:' + estCol + ';font-size:13px">' + ico + '</span> <b>' + escapeHtml(c.serie) + '</b>' + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>' : '') + conciliarInline
+    + (c.fcVw ? '<div title="N° de factura de compra VW → Tito (Oversoft)" style="font-size:10.5px;color:var(--vw-grey-3);font-family:monospace;margin-top:1px">FC ' + escapeHtml(c.fcVw) + '</div>' : '') + '</td>'
     + '<td data-label="Mes">' + escapeHtml(c.mes || '—') + '</td>'
     + '<td data-label="Modelo">' + escapeHtml(c.modeloOficial || c.modelo_valeria || '—') + '</td>'
     + '<td data-label="Color">' + escapeHtml(c.color || '—') + '</td>'
@@ -1555,7 +1556,7 @@ function renderComprasVW() {
     if (comprasVWFiltro === 'conciliadas' && c.estado !== 'conciliada') return false;
     if (comprasVWImpagas && !c.impaga) return false;     // toggle combinable
     if (comprasVWVendidas && !c.pv) return false;        // toggle combinable
-    if (qTokens.length) { const blob = [c.serie, c.modelo_valeria, c.modeloOversoft, c.color, c.fc_numero, c.mes, (c.pv ? c.pv.numero + ' ' + c.pv.cliente : '')].join(' ').toLowerCase(); if (!qTokens.every(t => blob.indexOf(t) > -1)) return false; }
+    if (qTokens.length) { const blob = [c.serie, c.modelo_valeria, c.modeloOversoft, c.color, c.fc_numero, c.fcVw, c.mes, (c.pv ? c.pv.numero + ' ' + c.pv.cliente : '')].join(' ').toLowerCase(); if (!qTokens.every(t => blob.indexOf(t) > -1)) return false; }
     return true;
   }).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.serie || '').localeCompare(String(b.serie || '')));   // más nuevo → más viejo (por carga)
   const meses = Array.from(new Set(comprasVWData.compras.map(c => c.mes).filter(Boolean))).sort((a, b) => _cvwMesKey(b) - _cvwMesKey(a));
