@@ -1385,12 +1385,33 @@ function _cvwInput(id, ph, w, type, val) {
   return '<div style="display:flex;flex-direction:column;gap:2px"><label style="font-size:10px;color:var(--vw-grey-3)">' + ph + '</label>'
     + '<input type="' + (type || 'text') + '" id="' + id + '"' + (val != null ? ' value="' + escapeHtml(String(val)) + '"' : '') + ' placeholder="' + ph + '" style="width:' + w + 'px;padding:6px 8px;border:1px solid var(--vw-grey-2);border-radius:6px;font-size:12px"></div>';
 }
+// Input para cargar el chasis de una unidad agregada a mano desde el Reparto
+// (serie "MAN-..."). Al guardar, renombra la serie al chasis real → concilia sola.
+function _cvwChasisInline(c, k) {
+  return '<span onclick="event.stopPropagation()" style="display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap">'
+    + '<span title="Cargada a mano · falta el chasis" style="font-size:11px;color:#9a7d00;white-space:nowrap">✎ chasis:</span>'
+    + '<input id="cvwchasis_' + k + '" placeholder="chasis o VIN" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){event.stopPropagation();guardarChasisManual(\'' + c.serie + '\',\'' + k + '\')}" style="width:120px;padding:3px 6px;border:1px solid #e0b000;border-radius:5px;font-size:12px">'
+    + ' <button onclick="event.stopPropagation();guardarChasisManual(\'' + c.serie + '\',\'' + k + '\')" style="background:#0a7a30;color:#fff;border:0;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:11px">guardar</button>'
+    + '</span>';
+}
+async function guardarChasisManual(serie, k) {
+  const el = document.getElementById('cvwchasis_' + k);
+  const chasis = ((el && el.value) || '').trim();
+  if (!chasis) { alert('Escribí el chasis (o el VIN completo)'); return; }
+  try {
+    const r = await _postCompraVW({ accion: 'setseriecompra', serie: serie, chasis: chasis });
+    if (r && (r.error || r.ok === false)) throw new Error(r.error || 'falló');
+  } catch (e) { alert('No se pudo guardar el chasis: ' + e.message); return; }
+  await loadComprasVW(true);
+}
 // Renglón SIMPLIFICADO (solo lectura, legible). Solo las VENDIDAS (con PV) se
 // despliegan al tocarlas. Las acciones (conciliar / pagar) van inline para que
 // las de stock sin PV no necesiten desplegarse.
 function _cvwSummaryRow(c) {
   let ico, txt, estCol;
-  if (c.estado === 'cargada') { ico = '🟡'; txt = 'sin Oversoft'; estCol = '#9a7d00'; }
+  const pendChasis = String(c.serie || '').startsWith('MAN-');   // alta manual sin chasis aún
+  if (pendChasis) { ico = '✎'; txt = 'sin chasis'; estCol = '#9a7d00'; }
+  else if (c.estado === 'cargada') { ico = '🟡'; txt = 'sin Oversoft'; estCol = '#9a7d00'; }
   else if (c.estado === 'sin_conciliar') { ico = '🔵'; txt = 'a conciliar'; estCol = '#0a52a8'; }
   else { ico = '🟢'; txt = 'conciliada'; estCol = '#0a7a30'; }
   const abierta = (comprasVWAbierta === c.serie);
@@ -1422,7 +1443,8 @@ function _cvwSummaryRow(c) {
   const onclickRow = ' onclick="toggleCompraVW(\'' + c.serie + '\')" style="cursor:pointer' + bg + '"';
   let h = '<tr class="cvw-sum"' + onclickRow + '>'
     + '<td data-label="✓" onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox"' + (sel ? ' checked' : '') + ' onclick="event.stopPropagation()" onchange="toggleSelCompra(\'' + c.serie + '\',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>'
-    + '<td data-label="Serie" class="cvw-stick"><span title="' + txt + '" style="color:' + estCol + ';font-size:13px">' + ico + '</span> <b>' + escapeHtml(c.serie) + '</b>' + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>' : '') + conciliarInline
+    + '<td data-label="Serie" class="cvw-stick"><span title="' + txt + '" style="color:' + estCol + ';font-size:13px">' + ico + '</span> '
+    + (pendChasis ? _cvwChasisInline(c, k) : ('<b>' + escapeHtml(c.serie) + '</b>')) + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>' : '') + conciliarInline
     + (c.fcVw ? '<div title="N° de factura de compra VW → Tito (Oversoft)" style="font-size:10.5px;color:var(--vw-grey-3);font-family:monospace;margin-top:1px">FC ' + escapeHtml(c.fcVw) + '</div>' : '') + '</td>'
     + '<td data-label="Mes">' + escapeHtml(c.mes || '—') + '</td>'
     + '<td data-label="Modelo">' + escapeHtml(c.modeloOficial || c.modelo_valeria || '—') + '</td>'
