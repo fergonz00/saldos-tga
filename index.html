@@ -1779,9 +1779,20 @@ async function conciliarCompraVW(serie) {
 }
 async function borrarCompraVW(serie) {
   if (!confirm('¿Estás seguro de ELIMINAR la factura de compra de la serie ' + serie + '?\n\nEsta acción no se puede deshacer.')) return;
+  _cvwEstado('Eliminando…');
   try { const r = await _postCompraVW({ accion: 'delcompravw', serie: serie }); if (r && r.error) throw new Error(r.error); }
-  catch (e) { alert('No se pudo eliminar: ' + e.message); return; }
-  await loadComprasVW(true);
+  catch (e) { _cvwEstado('Error al eliminar'); alert('No se pudo eliminar: ' + e.message); return; }
+  // Saco la fila LOCAL al instante (no recargo todo: eso es lo que trababa).
+  if (comprasVWData && Array.isArray(comprasVWData.compras)) {
+    comprasVWData.compras = comprasVWData.compras.filter(x => x.serie !== serie);
+  }
+  comprasVWSel.delete(serie);
+  if (comprasVWAbierta === serie) comprasVWAbierta = '';
+  _cvwCacheSet();
+  renderComprasVW();
+  const hora = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  _cvwEstado('Eliminada ' + hora);
+  _cvwRefreshSoon();   // reconcilia con el backend en segundo plano, sin congelar
 }
 
 function renderCompras(data) {
