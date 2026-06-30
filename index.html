@@ -1517,18 +1517,31 @@ function _cvwDetailRow(c, k) {
     const mesPatTxt = p.fechaPat ? ('patentada ' + _fechaDMA(p.fechaPat)) : (p.mesPat ? ('a patentar ' + _cvwMesLabel(p.mesPat)) : 'a patentar: s/d');
     const tipoTxt = p.tipo ? (p.tipo.replace('FINANCIA_', 'Financia ').replace('_', ' ') + (p.financia ? ' (' + p.financia + ')' : '')) : '';
     let tbl = '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:7px">'
-      + '<tr style="color:var(--vw-grey-3)"><th style="text-align:left;padding:2px 4px">Concepto</th><th style="text-align:right;padding:2px 4px">Plan</th><th style="text-align:right;padding:2px 4px">Cobrado</th><th style="text-align:right;padding:2px 4px">Falta</th></tr>';
+      + '<tr style="color:var(--vw-grey-3)">'
+      + '<th style="text-align:left;padding:2px 4px">Concepto</th>'
+      + '<th style="text-align:right;padding:2px 4px">Plan</th>'
+      + '<th style="text-align:right;padding:2px 4px">Cobrado</th>'
+      + '<th style="text-align:center;padding:2px 4px" title="Fecha del recibo de lo ya cobrado">F. recibo</th>'
+      + '<th style="text-align:right;padding:2px 4px">Falta</th>'
+      + '<th style="text-align:center;padding:2px 4px" title="Fecha en que la preventa prevé cobrar lo que falta">A cobrar</th></tr>';
     for (const x of (p.cuadro || [])) {
       const falta = Math.round((x.plan || 0) - (x.cobrado || 0));
+      const fCobro = x.fechaCobro ? _fechaDMA(x.fechaCobro) : '';
+      const recTit = (x.recibos && x.recibos.length) ? ' title="Recibo ' + escapeHtml(x.recibos.join(', ')) + '"' : '';
+      const fVto = x.vto ? _fechaDMA(x.vto) : '';
       tbl += '<tr style="border-top:1px solid #e3ecf5"><td style="padding:2px 4px">' + escapeHtml(x.concepto) + '</td>'
         + '<td style="text-align:right;padding:2px 4px">' + fmtPesos(x.plan) + '</td>'
         + '<td style="text-align:right;padding:2px 4px">' + (x.cobrado ? fmtPesos(x.cobrado) : '—') + '</td>'
-        + '<td style="text-align:right;padding:2px 4px;color:' + (falta > 1 ? '#cc3300' : '#0a7a30') + '">' + (falta > 1 ? fmtPesos(falta) : '✓') + '</td></tr>';
+        + '<td style="text-align:center;padding:2px 4px;color:#0a7a30;white-space:nowrap"' + recTit + '>' + (x.cobrado && fCobro ? fCobro : '—') + '</td>'
+        + '<td style="text-align:right;padding:2px 4px;color:' + (falta > 1 ? '#cc3300' : '#0a7a30') + '">' + (falta > 1 ? fmtPesos(falta) : '✓') + '</td>'
+        + '<td style="text-align:center;padding:2px 4px;color:#cc6600;white-space:nowrap">' + (falta > 1 && fVto ? fVto : '—') + '</td></tr>';
     }
     tbl += '<tr style="border-top:2px solid var(--vw-blue);font-weight:700"><td style="padding:3px 4px">TOTAL</td>'
       + '<td style="text-align:right;padding:3px 4px">' + fmtPesos(p.totalPlan) + '</td>'
       + '<td style="text-align:right;padding:3px 4px">' + fmtPesos(p.totalCobrado) + '</td>'
-      + '<td style="text-align:right;padding:3px 4px;color:' + (p.falta > 1 ? '#cc3300' : '#0a7a30') + '">' + (p.falta > 1 ? fmtPesos(p.falta) : '✓ cobrado') + '</td></tr></table>';
+      + '<td></td>'
+      + '<td style="text-align:right;padding:3px 4px;color:' + (p.falta > 1 ? '#cc3300' : '#0a7a30') + '">' + (p.falta > 1 ? fmtPesos(p.falta) : '✓ cobrado') + '</td>'
+      + '<td></td></tr></table>';
     venta = '<div style="margin-top:10px;padding:10px 12px;background:#fff;border:1px solid #cfe0f5;border-radius:8px">'
       + '<div style="font-size:13px;font-weight:700;color:var(--vw-blue)">🧾 Venta · PV ' + escapeHtml(p.numero) + (tipoTxt ? ' · ' + escapeHtml(tipoTxt) : '') + '</div>'
       + '<div style="font-size:12px;margin-top:3px">Cliente: <b>' + escapeHtml(p.cliente || '—') + '</b>' + (p.localidad ? ' · ' + escapeHtml(p.localidad) : '') + (p.vendedor ? ' · vend. ' + escapeHtml(p.vendedor) : '') + '</div>'
