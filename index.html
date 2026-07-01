@@ -854,7 +854,17 @@ td .tes-nota { min-width: 90px; }
       <button class="tab" data-tab="flujo" onclick="setTab('flujo')">Flujo financiero</button>
       <button class="tab" data-tab="bancos" onclick="setTab('bancos')">Bancos</button>
       <button class="tab" data-tab="personal" onclick="setTab('personal')">Personal</button>
+      <button class="tab" data-tab="fyf" onclick="setTab('fyf')">FyF</button>
     </div>
+
+    <!-- =================== PANEL FyF (reventas / costo unidad) =================== -->
+    <section class="panel" id="panelFyf">
+      <div class="toolbar">
+        <div class="updated" id="updatedAtFyf">—</div>
+        <button class="refresh" onclick="loadFyf(true)">Actualizar</button>
+      </div>
+      <div id="fyfContent"></div>
+    </section>
 
     <!-- =================== PANEL COMPRAS =================== -->
     <section class="panel active" id="panelCompras">
@@ -927,6 +937,9 @@ const GUARDIAS_EDITORES = ['fngonzalez', 'fgonzalez', 'marianom'];
 // URL del Web App publicado en la planilla espejo (legacy: ya no se usa para
 // Compras/Bancos/Personal; se mantiene por si quedan referencias).
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyRTqqpQMjKDL82Z5Cjd9IJWPQnINF0LAEvji8FizfXMBO8Cz0IVbTSnQnNmH_rRxz9yg/exec';
+// Backend gestion-next (reventas/FyF/costo unidad). El panel FyF lo consume directo.
+const GESTION_NEXT_URL   = 'https://gestion-next-fergonz00s-projects.vercel.app';
+const GESTION_NEXT_TOKEN = 'gtok_IE740qxp4uBANagjGH6MheFw';
 const APPS_SCRIPT_TOKEN = 'tga-saldos-K9Mx2P7vQ';
 
 // Backend de GESTIÓN (gestion.titogonzalez.online): fuente real de Compras VW
@@ -1028,7 +1041,7 @@ function showGate(msg) {
   document.getElementById('gateScreen').classList.remove('hidden');
 }
 function tabsPermitidas(session) {
-  if (ADMIN_USERS.includes(session.usuario)) return ['compras', 'flujo', 'bancos', 'personal'];
+  if (ADMIN_USERS.includes(session.usuario)) return ['compras', 'flujo', 'bancos', 'personal', 'fyf'];
   return TAB_ACCESS[session.usuario] || [];
 }
 function enterApp(session) {
@@ -1072,16 +1085,81 @@ function setTab(tab) {
     flujo:    'panelFlujo',
     bancos:   'panelBancos',
     personal: 'panelPersonal',
+    fyf:      'panelFyf',
   };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
   if (tab === 'compras' && !comprasVWData) loadComprasVW();
   if (tab === 'flujo') loadFlujoSaldos();
   if (tab === 'bancos')   loadBancos();
+  if (tab === 'fyf')      loadFyf();
   if (tab === 'personal') {
     const sub = document.querySelector('.subtab.active')?.dataset.sub || 'novedades';
     setPersonalSub(sub);
   }
+}
+
+// ============ Panel FyF (reventas / costo unidad) — consume gestion-next ============
+// Valeria tilda lo cobrado; el semáforo (rojo/ámbar/verde) concilia con Ventas.
+let fyfData = null;
+function _fyfEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function _fyfMoney(n){ return '$' + (Number(n)||0).toLocaleString('es-AR'); }
+async function loadFyf(forzar) {
+  const cont = document.getElementById('fyfContent');
+  if (cont && !fyfData) cont.innerHTML = '<div class="empty">Cargando…</div>';
+  try {
+    const r = await fetch(GESTION_NEXT_URL + '/api/reventas?token=' + encodeURIComponent(GESTION_NEXT_TOKEN) + (forzar ? '&fresh=1' : ''));
+    fyfData = await r.json();
+    document.getElementById('updatedAtFyf').textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-AR');
+    renderFyf();
+  } catch (e) {
+    if (cont) cont.innerHTML = '<div class="empty">No se pudo cargar (' + _fyfEsc(e.message || e) + ')</div>';
+  }
+}
+function renderFyf() {
+  const cont = document.getElementById('fyfContent');
+  if (!cont || !fyfData) return;
+  const ord = { pendiente:0, confirmado:1, cerrado:2 };
+  const items = (fyfData.items || []).slice().sort((a,b) => (ord[a.estado]-ord[b.estado]) || String(a.preventa).localeCompare(String(b.preventa)));
+  const P = fyfData.pendientes||0, C = fyfData.confirmados||0, Z = fyfData.cerrados||0;
+  let h = '<p class="lead">Cobros de reventas (FyF $1.110.000) y costo unidad, desde el 20/06. Tildá lo que ya se cobró.</p>';
+  h += '<div style="margin:6px 0 14px;font-size:13px">'
+     + '<span style="color:#cc3300;font-weight:700">● ' + P + ' pendientes</span> &nbsp; '
+     + '<span style="color:#d99200;font-weight:700">● ' + C + ' cobrados</span> &nbsp; '
+     + '<span style="color:#0a7a30;font-weight:700">● ' + Z + ' completos</span></div>';
+  if (!items.length) { cont.innerHTML = h + '<div class="empty">Sin ítems.</div>'; return; }
+  h += '<div class="table-wrap"><div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:660px">';
+  h += '<thead><tr style="text-align:left;border-bottom:2px solid #ddd"><th style="padding:6px 8px">Estado</th><th>PV</th><th>Cliente</th><th>Modelo</th><th>Concepto</th><th style="text-align:right">Monto</th><th></th></tr></thead><tbody>';
+  for (const it of items) {
+    const color = it.estado==='cerrado' ? '#0a7a30' : (it.estado==='confirmado' ? '#d99200' : '#cc3300');
+    const etxt  = it.estado==='cerrado' ? 'Completo' : (it.estado==='confirmado' ? 'Cobrado' : 'Pendiente');
+    const concepto = it.concepto==='fyf' ? 'FyF bonificado' : 'Costo unidad';
+    const arg = "'" + it.preventa + "','" + it.concepto + "'," + (Number(it.monto)||0);
+    let accion;
+    if (it.estado==='pendiente') accion = '<button onclick="confirmarFyf(' + arg + ')" style="border:0;background:#0a7a30;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:600">Marcar cobrado</button>';
+    else if (it.estado==='confirmado') accion = '<span style="font-size:11px;color:#888">por ' + _fyfEsc(it.confirmadoPor||'') + ' · <a onclick="desconfirmarFyf(' + arg + ')" style="color:#cc3300;cursor:pointer;text-decoration:underline">deshacer</a></span>';
+    else accion = '<span style="font-size:12px;color:#0a7a30;font-weight:700">✓</span>';
+    h += '<tr style="border-bottom:1px solid #eee">'
+       + '<td style="padding:6px 8px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + color + ';vertical-align:middle"></span> <span style="font-size:11px;color:' + color + ';font-weight:700">' + etxt + '</span></td>'
+       + '<td><b>' + _fyfEsc(it.preventa) + '</b></td>'
+       + '<td>' + _fyfEsc(it.cliente||'') + '</td>'
+       + '<td>' + _fyfEsc(it.modelo||'') + '</td>'
+       + '<td>' + concepto + '</td>'
+       + '<td style="text-align:right;white-space:nowrap">' + _fyfMoney(it.monto) + '</td>'
+       + '<td style="text-align:right;white-space:nowrap">' + accion + '</td>'
+       + '</tr>';
+  }
+  h += '</tbody></table></div></div>';
+  cont.innerHTML = h;
+}
+async function confirmarFyf(preventa, concepto, monto) { await _fyfPost({ preventa, concepto, monto, usuario: window._tgaUser || '' }); }
+async function desconfirmarFyf(preventa, concepto) { await _fyfPost({ preventa, concepto, desconfirmar: true }); }
+async function _fyfPost(body) {
+  try {
+    const r = await fetch(GESTION_NEXT_URL + '/api/reventas/confirmar?token=' + encodeURIComponent(GESTION_NEXT_TOKEN), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    await loadFyf(true);
+  } catch (e) { console.error('FyF confirm', e); const c = document.getElementById('updatedAtFyf'); if (c) c.textContent = 'Error al guardar — reintentá'; }
 }
 
 // Sub-pestañas dentro de Personal: Novedades / Guardias Ventas / Historial
