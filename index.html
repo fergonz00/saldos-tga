@@ -1121,22 +1121,24 @@ function renderFyf() {
   if (!cont || !fyfData) return;
   const ord = { pendiente:0, confirmado:1, cerrado:2 };
   const items = (fyfData.items || []).slice().sort((a,b) => (ord[a.estado]-ord[b.estado]) || String(a.preventa).localeCompare(String(b.preventa)));
-  const P = fyfData.pendientes||0, C = fyfData.confirmados||0, Z = fyfData.cerrados||0;
-  let h = '<p class="lead">Cobros de reventas (FyF $1.110.000) y costo unidad, desde el 20/06. Tildá lo que ya se cobró.</p>';
+  const P = fyfData.pendientes||0, C = fyfData.confirmados||0, Z = fyfData.cerrados||0, A = fyfData.alertas||0;
+  let h = '<p class="lead">Costo unidad de reventas (FyF $1.110.000) y acc, desde el 20/06. Confirmá lo que ya se cobró.</p>';
   h += '<div style="margin:6px 0 14px;font-size:13px">'
      + '<span style="color:#cc3300;font-weight:700">● ' + P + ' pendientes</span> &nbsp; '
      + '<span style="color:#d99200;font-weight:700">● ' + C + ' cobrados</span> &nbsp; '
-     + '<span style="color:#0a7a30;font-weight:700">● ' + Z + ' completos</span></div>';
+     + '<span style="color:#0a7a30;font-weight:700">● ' + Z + ' completos</span>'
+     + (A ? ' &nbsp; <span style="color:#c2185b;font-weight:700">⚠ ' + A + ' sin costo unidad</span>' : '') + '</div>';
   if (!items.length) { cont.innerHTML = h + '<div class="empty">Sin ítems.</div>'; return; }
   h += '<div class="table-wrap"><div class="table-scroll"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:660px">';
   h += '<thead><tr style="text-align:left;border-bottom:2px solid #ddd"><th style="padding:6px 8px">Estado</th><th>PV</th><th>Cliente</th><th>Modelo</th><th>Concepto</th><th style="text-align:right">Monto</th><th></th></tr></thead><tbody>';
   for (const it of items) {
-    const color = it.estado==='cerrado' ? '#0a7a30' : (it.estado==='confirmado' ? '#d99200' : '#cc3300');
-    const etxt  = it.estado==='cerrado' ? 'Completo' : (it.estado==='confirmado' ? 'Cobrado' : 'Pendiente');
-    const concepto = it.concepto==='fyf' ? 'FyF bonificado' : 'Costo unidad';
+    const color = it.estado==='cerrado' ? '#0a7a30' : (it.estado==='confirmado' ? '#d99200' : (it.estado==='alerta' ? '#c2185b' : '#cc3300'));
+    const etxt  = it.estado==='cerrado' ? 'Completo' : (it.estado==='confirmado' ? 'Cobrado' : (it.estado==='alerta' ? 'Sin costo unidad' : 'Pendiente'));
+    const concepto = it.concepto==='fyf' ? 'FyF bonificado' : 'Costo unidad (acc)';
     const arg = "'" + it.preventa + "','" + it.concepto + "'," + (Number(it.monto)||0);
     let accion;
-    if (it.estado==='pendiente') accion = '<button onclick="confirmarFyf(' + arg + ')" style="border:0;background:#0a7a30;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:600">Marcar cobrado</button>';
+    if (it.estado==='alerta') accion = '<span style="font-size:11px;color:#c2185b">⚠ falta cargar el costo unidad en la preventa</span>';
+    else if (it.estado==='pendiente') accion = '<button onclick="confirmarFyf(' + arg + ')" style="border:0;background:#0a7a30;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:600">confirmar ok</button>';
     else if (it.estado==='confirmado') accion = '<span style="font-size:11px;color:#888">por ' + _fyfEsc(it.confirmadoPor||'') + ' · <a onclick="desconfirmarFyf(' + arg + ')" style="color:#cc3300;cursor:pointer;text-decoration:underline">deshacer</a></span>';
     else accion = '<span style="font-size:12px;color:#0a7a30;font-weight:700">✓</span>';
     h += '<tr style="border-bottom:1px solid #eee">'
