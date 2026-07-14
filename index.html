@@ -1656,6 +1656,7 @@ function _cvwDetailRow(c, k) {
     venta = '<div style="margin-top:10px;padding:10px 12px;background:#fff;border:1px solid #cfe0f5;border-radius:8px">'
       + '<div style="font-size:13px;font-weight:700;color:var(--vw-blue)">🧾 Venta · PV ' + escapeHtml(p.numero) + (tipoTxt ? ' · ' + escapeHtml(tipoTxt) : '') + '</div>'
       + '<div style="font-size:12px;margin-top:3px">Cliente: <b>' + escapeHtml(p.cliente || '—') + '</b>' + (p.localidad ? ' · ' + escapeHtml(p.localidad) : '') + (p.vendedor ? ' · vend. ' + escapeHtml(p.vendedor) : '') + '</div>'
+      + (p.fechaPv ? '<div style="font-size:12px;margin-top:2px;color:var(--vw-grey-3)">Preventa del <b>' + escapeHtml(_fechaDMA(p.fechaPv)) + '</b></div>' : '')
       + '<div style="font-size:12px;color:#7a5b00;font-weight:600">' + escapeHtml(mesPatTxt) + '</div>'
       + tbl
       + '</div>';
