@@ -1275,15 +1275,19 @@ function _comprasCardsHtml() {
   const impagas = compras.filter(c => c.impaga);
   const deuda = impagas.reduce((a, c) => a + _cvwBruto(c), 0);
   const dispFP = FLOOR_PLAN_FIJO - deuda;
-  const dispVW = Number(comprasDispVW) || 0;
-  const editable = BANCOS_EDITORES.includes((getSharedCookie() || {}).usuario);
+  // "Disponible para pagar VW" es AUTOMÁTICO: sale de la planilla de tesorería
+  // (1qIP4OT5 → hoja INFORME, fila "SALDOS DISPONIBLES VW" col C), expuesta por el
+  // backend como lastInforme.disponibleVW. Si el INFORME todavía no cargó, cae al
+  // último valor manual guardado para no mostrar $0 en el primer pintado.
+  const dispVWauto = lastInforme ? Number(lastInforme.disponibleVW) || 0 : null;
+  const dispVW = (dispVWauto != null ? dispVWauto : Number(comprasDispVW) || 0);
   return '<div class="cards cvw-cards">'
     + '<div class="card"><div class="label">Floor Plan</div><div class="value">' + fmtMoney(FLOOR_PLAN_FIJO) + '</div><div class="sub">Línea de crédito con VW (fijo)</div></div>'
     + '<div class="card warn"><div class="label">Deuda Floor Plan</div><div class="value">' + fmtMoney(deuda) + '</div><div class="sub">' + impagas.length + ' unidad' + (impagas.length === 1 ? '' : 'es') + ' impaga' + (impagas.length === 1 ? '' : 's') + ' (lo que debemos a VW)</div></div>'
     + '<div class="card ' + (dispFP >= 0 ? 'good' : 'bad') + '"><div class="label">Disponible Floor Plan</div><div class="value">' + fmtMoney(dispFP) + '</div><div class="sub">Floor Plan − deuda</div></div>'
     + '<div class="card good"><div class="label">Disponible para pagar VW</div>'
-    + (editable ? '<input type="text" class="dispvw-inp" value="' + (dispVW || '') + '" placeholder="0" onchange="guardarDispVW(this)">' : '<div class="value">' + fmtMoney(dispVW) + '</div>')
-    + '<div class="sub">manual · se conectará con Bancos</div></div>'
+    + '<div class="value">' + fmtMoney(dispVW) + '</div>'
+    + '<div class="sub">automático · planilla de tesorería</div></div>'
     + '</div>';
 }
 
@@ -1393,6 +1397,11 @@ async function loadComprasVW(forzar) {
     });
   }
   const cont = document.getElementById('comprasVWContent');
+
+  // El card "Disponible para pagar VW" sale de la planilla de tesorería (INFORME).
+  // Lo cargamos en background si todavía no está (o si se pidió refrescar) y
+  // re-renderizamos cuando llega, sin bloquear el pintado de las facturas.
+  if (!lastInforme || forzar) { loadInforme().then(() => renderComprasVW()).catch(() => {}); }
 
   // Primer pintado INSTANTÁNEO con lo último guardado en este navegador; después se
   // refresca en background (stale-while-revalidate). Así no esperás cada vez.
