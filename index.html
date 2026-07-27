@@ -2903,6 +2903,16 @@ function _flujoCard(titulo, monto, color) {
     + '<div style="font-size:12px;color:var(--vw-grey-4)">' + titulo + '</div>'
     + '<div style="font-size:20px;font-weight:800;color:' + color + ';margin-top:4px">' + fmtMoney(monto) + '</div></div>';
 }
+// Aclaraciones del backend sobre un ingreso: si el cobro se corrió al día de
+// entrega porque el vto de Oversoft quedó viejo, o si es una operación especial.
+// Sin esto un cobro aparece en una semana sin explicación de por qué se movió.
+function _flujoNota(x) {
+  const n = [];
+  if (x.reproyectado && x.fechaOrig) n.push('reprogramado, vencía ' + _saldosFechaDisp(x.fechaOrig));
+  if (x.especial) n.push('operación especial');
+  if (!n.length && x.vencido) n.push('VENCIDO');
+  return n.length ? ' (' + n.join(' · ') + ')' : '';
+}
 function toggleFlujoSem(key) { if (flujoAbiertas.has(key)) flujoAbiertas.delete(key); else flujoAbiertas.add(key); renderFlujoSaldos(); }
 async function loadFlujoSaldos(forzar) {
   const cont = document.getElementById('flujoContent');
@@ -2933,7 +2943,7 @@ function renderFlujoSaldos() {
   const totEgr = egr.reduce((a, x) => a + (x.monto || 0), 0);
   const sem = {};
   const add = (key, tipo, monto, item) => { const k = key || '__sin__'; if (!sem[k]) sem[k] = { ing: 0, egr: 0, items: [] }; sem[k][tipo] += monto; sem[k].items.push(item); };
-  for (const x of ing) add(_flujoSemanaKey(x.fecha), 'ing', x.monto, { tipo: 'ing', monto: x.monto, desc: 'PV ' + x.pv + ' · ' + x.concepto + (x.cliente ? ' · ' + x.cliente : '') });
+  for (const x of ing) add(_flujoSemanaKey(x.fecha), 'ing', x.monto, { tipo: 'ing', monto: x.monto, desc: 'PV ' + x.pv + ' · ' + x.concepto + (x.cliente ? ' · ' + x.cliente : '') + _flujoNota(x) });
   for (const x of egr) add(_flujoSemanaKey(_flujoToISO(x.vence)), 'egr', x.monto, { tipo: 'egr', monto: x.monto, desc: x.serie + ' · ' + (x.modelo || '') + (x.vence ? ' · vto ' + _saldosFechaDisp(x.vence) : '') });
   const keys = Object.keys(sem).sort((a, b) => (a === '__sin__' ? '9999' : a).localeCompare(b === '__sin__' ? '9999' : b));
   let h = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
@@ -2963,7 +2973,7 @@ function renderFlujoSaldos() {
     }
   }
   h += '</tbody></table></div></div>';
-  h += '<div style="font-size:11px;color:var(--vw-grey-4);margin-top:10px">💚 Ingresos = cobros pendientes de las ventas vigentes (por vencimiento). 🔴 Egresos = facturas impagas a VW (por vencimiento). "Acumulado" = neto sumado semana a semana. Tocá una semana para ver el detalle.</div>';
+  h += '<div style="font-size:11px;color:var(--vw-grey-4);margin-top:10px">💚 Ingresos = cobros pendientes de las ventas vigentes (por vencimiento), neteando las notas de crédito de la misma preventa. Si el vencimiento ya pasó y la unidad todavía no se entregó, el cobro se muestra en la fecha de entrega programada y se aclara "reprogramado". 🔴 Egresos = facturas impagas a VW (por vencimiento); las unidades sin factura cargada todavía no suman. "Acumulado" = neto sumado semana a semana. Tocá una semana para ver el detalle.</div>';
   cont.innerHTML = h;
 }
 
