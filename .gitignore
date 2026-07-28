@@ -9,3 +9,4 @@ _check.js
 _informe_raw.json
 _compras_raw.json
 *.xlsx
+scripts/logs/
