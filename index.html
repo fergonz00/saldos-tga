@@ -993,10 +993,14 @@ const GUARDIAS_CODE2EST = Object.fromEntries(
 );
 // Motivos rápidos sugeridos para una falta (igual se puede escribir otro)
 const GUARDIAS_MOTIVOS = ['Enfermedad', 'Tema personal', 'Sin aviso', 'Accidente', 'Familiar'];
-// BASE (extraída del Excel GUARDIASJUNJUL.xlsx, hoja JUNJULIO, jun–jul 2026).
-// Formato: 'fecha|<ER:JULIAN,PEPE,LOISI,FAZZINI>|<IND:MARTA,GISELA,TOMAS>'
+// BASE. Formato: 'fecha|<ER:JULIAN,PEPE,LOISI,FAZZINI>|<IND:MARTA,GISELA,TOMAS>'
 // Códigos: t=trabaja f=franco v=vacaciones c=curso x=falta
-// Vacaciones de Julián cargadas: lun 29/jun → vuelve lun 6/jul.
+// jun–jul 2026: Excel GUARDIASJUNJUL.xlsx, hoja JUNJULIO.
+//   Vacaciones de Julián: lun 29/jun → vuelve lun 6/jul. Curso Experto: mar 7/jul.
+// ago–set 2026: Excel GUARDIASAGOSET.xlsx, hoja AGOSET (28-jul-2026).
+//   Vacaciones Fazzini: mié 5/ago → vuelve lun 17/ago. Vacaciones Marta: lun 24/ago → vuelve lun 31/ago.
+//   Curso Experto (Julián): mar 4/ago.
+//   ⚠ La hoja AGOSET llega hasta el lun 14/set — de ahí en adelante falta cargar.
 const GUARDIAS_BASE_RAW = [
   '2026-06-01|fttt|ttt', '2026-06-02|ttft|ttt', '2026-06-03|tttf|ttt', '2026-06-04|tftt|ttt',
   '2026-06-05|fttt|ttt', '2026-06-06|ttff|fff', '2026-06-07|ffff|fff', '2026-06-08|tftt|ttt',
@@ -1014,6 +1018,19 @@ const GUARDIAS_BASE_RAW = [
   '2026-07-23|ttft|ttt', '2026-07-24|fttt|ttt', '2026-07-25|tfft|fff', '2026-07-26|ffff|fff',
   '2026-07-27|fttt|ttt', '2026-07-28|tftt|ttt', '2026-07-29|tttf|ttt', '2026-07-30|ttft|ttt',
   '2026-07-31|tftt|ttt',
+  // --- AGOSTO / SETIEMBRE 2026 (hoja AGOSET) ---
+  '2026-08-01|fttf|fff', '2026-08-02|ffff|fff', '2026-08-03|tttt|ttt', '2026-08-04|cttt|ttt',
+  '2026-08-05|tttv|ttt', '2026-08-06|tftv|ttt', '2026-08-07|fttv|ttt', '2026-08-08|ttfv|fff',
+  '2026-08-09|ffff|fff', '2026-08-10|tttv|ttt', '2026-08-11|tttv|ttt', '2026-08-12|tttv|ttt',
+  '2026-08-13|fttv|ttt', '2026-08-14|ttfv|ttt', '2026-08-15|tftv|fff', '2026-08-16|ffff|fff',
+  '2026-08-17|fttt|ttt', '2026-08-18|ttft|ttt', '2026-08-19|tttf|ttt', '2026-08-20|tftt|ttt',
+  '2026-08-21|tftt|ttt', '2026-08-22|ftft|fff', '2026-08-23|ffff|fff', '2026-08-24|tftt|vtt',
+  '2026-08-25|fttt|vtt', '2026-08-26|tttf|vtt', '2026-08-27|ttft|vtt', '2026-08-28|fttt|vtt',
+  '2026-08-29|tftf|fff', '2026-08-30|ffff|fff', '2026-08-31|ttft|ttt', '2026-09-01|fttt|ttt',
+  '2026-09-02|tttf|ttt', '2026-09-03|tftt|ttt', '2026-09-04|tftt|ttt', '2026-09-05|ftft|fff',
+  '2026-09-06|ffff|fff', '2026-09-07|tftt|ttt', '2026-09-08|ttft|ttt', '2026-09-09|tttf|ttt',
+  '2026-09-10|fttt|ttt', '2026-09-11|ttft|ttt', '2026-09-12|tftf|fff', '2026-09-13|ffff|fff',
+  '2026-09-14|fttt|ttt',
 ];
 let guardiasBaseMap = null;          // fecha → { 'Entre Ríos': {VEND:estado}, ... }
 let guardiasOverrides = new Map();   // 'fecha|sucursal|vendedor' → estado
