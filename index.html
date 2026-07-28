@@ -960,6 +960,7 @@ let personalNov = null;        // novedades del personal general (saldos_novedad
 let filterStatus = 'impagas'; // 'impagas' | 'todas' | 'pagadas'
 let colSearch = '';
 let colVence = ''; // string ISO yyyy-mm-dd o 'sin'
+let colPago = '';  // fecha de PAGO (ISO yyyy-mm-dd) — "qué unidades pagué tal día"
 let comprasSelected = new Set(); // claves "idx:serie" de filas seleccionadas
 let proxVtoFilter = 'all'; // 'all' | 'novendidas' | 'vendidas'
 let proxVtoSelected = new Set();
@@ -1311,6 +1312,7 @@ function _comprasCardsHtml() {
 // COMPRAS VW — carga de Valeria + conciliación con Oversoft (reemplaza el Sheet)
 // =======================================================================
 let comprasVWData = null, comprasVWBusca = '', comprasVWFiltro = 'todas', comprasVWMes = '__todos__', comprasVWAbierta = '', comprasVWVence = '__todas__';
+let comprasVWPago = '__todas__';   // filtro por FECHA DE PAGO a VW (ISO) — "qué pagué hoy"
 let comprasVWSel = new Set();   // series seleccionadas para sumar deuda a VW
 let comprasVWPagando = '';      // serie con el pago inline abierto
 let comprasVWImpagas = true, comprasVWVendidas = false;   // toggles combinables (en saldos arranca filtrando impagas)
@@ -1356,6 +1358,12 @@ function _cvwFechaDisp(v) {
   return m ? (m[3] + '/' + m[2] + '/' + m[1].slice(-2)) : String(v || '');
 }
 function _cvwMesLabel(mesKey) { const m = String(mesKey || '').match(/^(\d{4})-(\d{2})/); return m ? (_mesLabelLargo(mesKey) + ' ' + m[1]) : String(mesKey || ''); }
+// Clave para agrupar por fecha de pago a VW. La columna guarda ISO ("2026-07-28",
+// lo que escribe el botón Pagar) o el viejo "9-jun" de la carga a mano; normalizo a
+// ISO y, si no se puede (alguna fecha tipeada raro), uso el texto tal cual.
+function _cvwPagoKey(c) {
+  return _cvwToISO(c.fecha_pago_vw) || String(c.fecha_pago_vw || '').trim();
+}
 function _cvwHoyISO() { const d = new Date(); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
 function _cvwISOtoDDmmm(iso) { const ab = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']; const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (String(parseInt(m[3], 10)) + '-' + ab[parseInt(m[2], 10) - 1]) : String(iso); }
 function _cvwIva(modelo) {
@@ -1735,6 +1743,7 @@ function renderComprasVW() {
   const rows = comprasVWData.compras.filter(c => {
     if (comprasVWMes && comprasVWMes !== '__todos__' && String(c.mes || '') !== comprasVWMes) return false;
     if (comprasVWVence && comprasVWVence !== '__todas__' && (_cvwToISO(c.vence) !== comprasVWVence || !c.impaga)) return false;
+    if (comprasVWPago && comprasVWPago !== '__todas__' && _cvwPagoKey(c) !== comprasVWPago) return false;
     if (comprasVWFiltro === 'cargadas' && c.estado !== 'cargada') return false;
     if (comprasVWFiltro === 'sinconciliar' && c.estado !== 'sin_conciliar') return false;
     if (comprasVWFiltro === 'conciliadas' && c.estado !== 'conciliada') return false;
@@ -1746,6 +1755,19 @@ function renderComprasVW() {
   const meses = Array.from(new Set(comprasVWData.compras.map(c => c.mes).filter(Boolean))).sort((a, b) => _cvwMesKey(b) - _cvwMesKey(a));
   // solo vtos de impagas (las pagadas no interesan y serían demasiadas opciones)
   const vtos = Array.from(new Set(comprasVWData.compras.filter(c => c.impaga).map(c => _cvwToISO(c.vence)).filter(Boolean))).sort((a, b) => _cvwVenceKey(a) - _cvwVenceKey(b));
+  // fechas de PAGO a VW (las que ya se pagaron), más recientes primero, con cuántas unidades cayeron ese día
+  const pagosMap = new Map();
+  for (const c of comprasVWData.compras) {
+    const k = _cvwPagoKey(c);
+    if (!k) continue;
+    pagosMap.set(k, (pagosMap.get(k) || 0) + 1);
+  }
+  // ISO primero (de la más nueva a la más vieja); las que no normalizan, al final
+  const _esISO = s => /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const pagos = Array.from(pagosMap.keys()).sort((a, b) => {
+    if (_esISO(a) !== _esISO(b)) return _esISO(a) ? -1 : 1;
+    return b.localeCompare(a);
+  });
   let h = '<details style="background:#f0f6ff;border:1px solid #cfe0f5;border-radius:10px;padding:10px 12px;margin-bottom:12px">'
     + '<summary style="font-size:13px;font-weight:700;color:var(--vw-blue);cursor:pointer">➕ Cargar factura manual <span style="font-weight:400;color:var(--vw-grey-3)">(la carga normal es automática desde Reparto)</span></summary>'
     + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:flex-end">'
@@ -1762,19 +1784,35 @@ function renderComprasVW() {
   mesSel += '<option value="__todos__"' + (comprasVWMes === '__todos__' ? ' selected' : '') + '>Todos los meses · ' + comprasVWData.compras.length + '</option>';
   for (const mk of meses) mesSel += '<option value="' + escapeHtml(mk) + '"' + (comprasVWMes === mk ? ' selected' : '') + '>' + escapeHtml(mk) + '</option>';
   mesSel += '</select>';
-  let vtoSel = '<select onchange="comprasVWVence=this.value;renderComprasVW()" style="padding:6px 10px;border:1px solid var(--vw-grey-2);border-radius:8px;font-size:13px">';
+  let vtoSel = '<select onchange="comprasVWVence=this.value;if(comprasVWVence!==\'__todas__\')comprasVWPago=\'__todas__\';renderComprasVW()" style="padding:6px 10px;border:1px solid var(--vw-grey-2);border-radius:8px;font-size:13px">';
   vtoSel += '<option value="__todas__"' + (comprasVWVence === '__todas__' ? ' selected' : '') + '>Vto (impagas)…</option>';
   for (const vk of vtos) vtoSel += '<option value="' + escapeHtml(vk) + '"' + (comprasVWVence === vk ? ' selected' : '') + '>' + escapeHtml(_cvwFechaDisp(vk)) + '</option>';
   vtoSel += '</select>';
+  const pagoActivo = comprasVWPago && comprasVWPago !== '__todas__';
+  let pagoSel = '<select onchange="setComprasVWPago(this.value)" style="padding:6px 10px;border:1px solid ' + (pagoActivo ? '#0a7a30' : 'var(--vw-grey-2)') + ';border-radius:8px;font-size:13px' + (pagoActivo ? ';color:#0a7a30;font-weight:700' : '') + '">';
+  pagoSel += '<option value="__todas__"' + (!pagoActivo ? ' selected' : '') + '>Pagadas el…</option>';
+  const _hoyISO = _cvwHoyISO();
+  for (const pk of pagos) pagoSel += '<option value="' + escapeHtml(pk) + '"' + (comprasVWPago === pk ? ' selected' : '') + '>' + escapeHtml(_cvwFechaDisp(pk)) + (pk === _hoyISO ? ' (hoy)' : '') + ' · ' + pagosMap.get(pk) + ' un.</option>';
+  pagoSel += '</select>';
   h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'
     + '<label style="font-size:13px;color:var(--vw-grey-3)">Mes:</label>' + mesSel
     + '<label style="font-size:13px;color:var(--vw-grey-3)">Vto VW:</label>' + vtoSel
+    + '<label style="font-size:13px;color:var(--vw-grey-3)">Pago VW:</label>' + pagoSel
     + chip('todas', 'Todas') + chip('conciliadas', '🟢 Conciliadas') + chip('sinconciliar', '🔵 A conciliar') + chip('cargadas', '🟡 Sin Oversoft')
     + '<span style="width:1px;height:22px;background:var(--vw-grey-2);margin:0 2px"></span>'
-    + tchip(comprasVWVendidas, '🧾 Vendidas', 'comprasVWVendidas=!comprasVWVendidas') + tchip(comprasVWImpagas, '🔴 Impagas', 'comprasVWImpagas=!comprasVWImpagas')
+    + tchip(comprasVWVendidas, '🧾 Vendidas', 'comprasVWVendidas=!comprasVWVendidas') + tchip(comprasVWImpagas, '🔴 Impagas', 'comprasVWImpagas=!comprasVWImpagas;if(comprasVWImpagas)comprasVWPago=\'__todas__\'')
     + '<input type="text" id="cvwBuscaInput" placeholder="🔍 serie, modelo, FC…" value="' + escapeHtml(comprasVWBusca) + '" oninput="onComprasVWBusca(this.value, this)" style="padding:7px 12px;border:1px solid var(--vw-grey-2);border-radius:8px;min-width:180px;font-size:13px">'
     + '<span style="font-size:12px;color:var(--vw-grey-3)">' + rows.length + ' facturas</span>'
     + '</div>';
+  // resumen del pago filtrado: cuántas unidades y por cuánto se pagó ESE día
+  if (pagoActivo) {
+    const totPago = rows.reduce((a, c) => a + _cvwBruto(c), 0);
+    h += '<div style="background:#eaf7ef;border:1px solid #b7e0c6;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:13px;color:#065F46">'
+      + '💵 Pagadas el <b>' + escapeHtml(_cvwFechaDisp(comprasVWPago)) + '</b>: <b>' + rows.length + '</b> unidad' + (rows.length === 1 ? '' : 'es')
+      + ' · Total <b>' + fmtPesos(totPago) + '</b>'
+      + ' <button onclick="setComprasVWPago(\'__todas__\')" style="background:none;border:1px solid #b7e0c6;border-radius:6px;padding:2px 8px;margin-left:6px;cursor:pointer;font-size:12px;color:#065F46">✕ quitar filtro</button>'
+      + '</div>';
+  }
   // barra de selección/suma de deuda a VW
   window._cvwFiltradas = rows.map(r => r.serie);
   let selTot = 0, selN = 0, selImpagasN = 0;
@@ -1844,6 +1882,18 @@ async function nuevaCompraVW() {
   try { const r = await _postCompraVW({ accion: 'setcompravw', serie: serie, campos: campos }); if (r && r.error) throw new Error(r.error); }
   catch (e) { alert('No se pudo agregar: ' + e.message); return; }
   await loadComprasVW(true);
+}
+// Filtrar por fecha de pago a VW. Como una unidad pagada NUNCA es impaga, al elegir
+// una fecha apago los filtros que solo muestran impagas (toggle 🔴 y el select de Vto),
+// si no la grilla queda siempre vacía.
+function setComprasVWPago(v) {
+  comprasVWPago = v || '__todas__';
+  if (comprasVWPago !== '__todas__') {
+    comprasVWImpagas = false;
+    comprasVWVence = '__todas__';
+    comprasVWMes = '__todos__';
+  }
+  renderComprasVW();
 }
 function iniciarPagoInline(serie) { comprasVWPagando = serie; renderComprasVW(); }
 function cancelarPagoInline() { comprasVWPagando = ''; renderComprasVW(); }
@@ -1967,13 +2017,42 @@ function renderCompras(data) {
     `<option value="${escapeHtml(k)}" ${k === colVence ? 'selected' : ''}>${escapeHtml(v.label)}</option>`
   ).join('');
 
+  // Select de FECHA DE PAGO (solo de las pagadas), más reciente primero, con cuántas
+  // unidades se pagaron ese día. Sirve para ver "las que pagué hoy".
+  const pagosMapU = new Map(); // texto tal cual está en la planilla → {date, n}
+  unidades.forEach(u => {
+    if (u.impaga || !u.fechaPago) return;
+    const key = String(u.fechaPago).trim();
+    if (!key) return;
+    if (!pagosMapU.has(key)) pagosMapU.set(key, { date: fechaPagoReal(u), n: 0 });
+    pagosMapU.get(key).n++;
+  });
+  const hoyStr = fmtDateKey(new Date());
+  const pagosOpts = Array.from(pagosMapU.entries())
+    .sort((a, b) => {
+      if (!a[1].date && !b[1].date) return 0;
+      if (!a[1].date) return 1;
+      if (!b[1].date) return -1;
+      return b[1].date - a[1].date;   // más reciente primero
+    })
+    .map(([k, v]) => {
+      const esHoy = v.date && fmtDateKey(v.date) === hoyStr;
+      // el año no viene en la planilla: lo muestro solo cuando no es el corriente
+      const anio = (v.date && v.date.getFullYear() !== new Date().getFullYear()) ? ` '${String(v.date.getFullYear()).slice(-2)}` : '';
+      return `<option value="${escapeHtml(k)}" ${k === colPago ? 'selected' : ''}>${escapeHtml(k)}${anio}${esHoy ? ' (hoy)' : ''} · ${v.n} un.</option>`;
+    })
+    .join('');
+
   const colFiltros = `
     <div class="col-filters">
       <input type="search" placeholder="Buscar serie, preventa, modelo..." value="${escapeHtml(colSearch)}" oninput="setColSearch(this.value)">
       <select onchange="setColVence(this.value)">
         <option value="">Vence (todas)</option>${vencesOpts}
       </select>
-      ${(colSearch || colVence) ? '<button class="clear-btn" onclick="clearColFilters()">✕ Limpiar</button>' : ''}
+      <select onchange="setColPago(this.value)" ${colPago ? 'style="border-color:#0a7a30;color:#0a7a30;font-weight:700"' : ''}>
+        <option value="">Pagadas el…</option>${pagosOpts}
+      </select>
+      ${(colSearch || colVence || colPago) ? '<button class="clear-btn" onclick="clearColFilters()">✕ Limpiar</button>' : ''}
     </div>
   `;
 
@@ -2000,10 +2079,18 @@ function setColSearch(v) {
 }
 function setColVence(v) {
   colVence = v || '';
-  rerenderComprasInner();
+  if (colVence) colPago = '';   // vencimiento es cosa de impagas; pago, de pagadas
+  if (lastCompras) renderCompras(lastCompras); else rerenderComprasInner();
+}
+// Al elegir una fecha de pago paso la vista a "Pagadas" (si no, con el filtro por
+// defecto "Solo impagas" la tabla queda siempre vacía) y suelto el filtro de Vence.
+function setColPago(v) {
+  colPago = v || '';
+  if (colPago) { colVence = ''; filterStatus = 'pagadas'; }
+  if (lastCompras) renderCompras(lastCompras);
 }
 function clearColFilters() {
-  colSearch = ''; colVence = '';
+  colSearch = ''; colVence = ''; colPago = '';
   if (lastCompras) renderCompras(lastCompras);
 }
 
@@ -2079,7 +2166,7 @@ function rerenderComprasInner() {
   }
 
   // Mostrar/ocultar el botón limpiar
-  const wantClear = !!(colSearch || colVence);
+  const wantClear = !!(colSearch || colVence || colPago);
   const cf = wrap.querySelector('.col-filters');
   if (cf) {
     let btn = cf.querySelector('.clear-btn');
@@ -2109,6 +2196,10 @@ function renderTablaUnidades(unidades) {
       const key = d ? fmtDateKey(d) : (u.vence ? '' : 'sin');
       return key === colVence;
     });
+  }
+  // Filtro por fecha de pago
+  if (colPago) {
+    filas = filas.filter(u => String(u.fechaPago || '').trim() === colPago);
   }
   if (colSearch) {
     const q = colSearch.trim().toLowerCase();
@@ -2172,8 +2263,8 @@ function renderTablaUnidades(unidades) {
   return `
     <div class="table-wrap">
       <div class="table-head">
-        <h3>Unidades</h3>
-        <span class="count">${filas.length} fila${filas.length === 1 ? '' : 's'} · ordenadas por vencimiento</span>
+        <h3>Unidades${colPago ? ' pagadas el ' + escapeHtml(colPago) : ''}</h3>
+        <span class="count">${filas.length} fila${filas.length === 1 ? '' : 's'} · ordenadas por vencimiento${colPago ? ' · total ' + fmtMoney(filas.reduce((a, u) => a + (Number(u.total || u.importe) || 0), 0)) : ''}</span>
       </div>
       <div class="table-scroll">
         <table>
@@ -2206,6 +2297,24 @@ function renderTablaUnidades(unidades) {
   `;
 }
 
+// La planilla manda la fecha de pago SIN año ("26-mar"), así que parseFechaCorta le
+// pone el año corriente y las de diciembre-25 quedarían en el futuro. El año real lo
+// saco del mes de compra de la unidad ("noviembre-25"): si el pago cae en un mes
+// anterior al de compra, es que ya pasó a enero del año siguiente. Solo se usa para
+// ORDENAR y para marcar "(hoy)" — el filtro compara el texto tal cual.
+const _MESLARGO_NUM = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 };
+function fechaPagoReal(u) {
+  const d = parseFechaCorta(u && u.fechaPago);
+  if (!d) return null;
+  const p = String((u && u.mes) || '').toLowerCase().split('-');
+  const mesCompra = _MESLARGO_NUM[(p[0] || '').trim()] || 0;
+  const yy = Number((p[1] || '').trim());
+  if (!mesCompra || !yy) return d;
+  let y = 2000 + yy;
+  if (d.getMonth() + 1 < mesCompra) y++;   // pagó en enero una compra de noviembre
+  return new Date(y, d.getMonth(), d.getDate());
+}
+
 function filaKey(u) {
   // Identifica una fila aunque cambie de orden
   return String(u.idx || '') + ':' + String(u.serie || '') + ':' + String(u.preventa || '');
@@ -2224,6 +2333,9 @@ function getFilasVisibles() {
       const key = d ? fmtDateKey(d) : (u.vence ? '' : 'sin');
       return key === colVence;
     });
+  }
+  if (colPago) {
+    filas = filas.filter(u => String(u.fechaPago || '').trim() === colPago);
   }
   if (colSearch) {
     const q = colSearch.trim().toLowerCase();
