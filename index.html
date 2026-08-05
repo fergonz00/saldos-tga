@@ -628,6 +628,7 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .rep-area { display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.3px; vertical-align: middle; }
 .rep-area.ventas  { background: #DBEAFE; color: #1E40AF; }
 .rep-area.general { background: var(--vw-grey-2); color: var(--vw-grey-4); }
+.rep-area.ambiguo { background: var(--orange-soft, #FEF3C7); color: #92400E; }
 
 /* ===== Historial · toolbar (vista + mes) ===== */
 .hist-toolbar {
@@ -4050,6 +4051,7 @@ async function snapshotNovedadesGenerales(personal) {
 let historialGeneral = null;   // filas de saldos_novedades
 let histVista = 'persona';     // 'persona' (estadística) | 'dia' (detalle cronológico)
 let histMes   = null;          // 'YYYY-MM' o 'todo' (null = mes en curso)
+let histNombres = new Map();   // clave de persona → nombre para mostrar
 const histAbiertas = new Set();// personas con el detalle desplegado
 
 async function renderHistorial() {
@@ -4104,8 +4106,21 @@ const PERSONAL_ALIAS = {
   'María Lujan': 'Maria Lujan Bitz',
   'Bitz': 'Maria Lujan Bitz',
   'Bitz Maria Lujan': 'Maria Lujan Bitz',
+  'Mónica G': 'Monica Gerez',
+  'Moni G': 'Monica Gerez',
+  'Mechi': 'Mercedes Gerez',
+  'César': 'Cesar Zarza',
+  'Zarza': 'Cesar Zarza',
+  'C.Zarza': 'Cesar Zarza',
+  'Nico O': 'Nicolas Ojeda',
+  'Ojeda': 'Nicolas Ojeda',
 };
 const PADRON_ALIAS = new Map(Object.entries(PERSONAL_ALIAS).map(([k, v]) => [claveNombre(k), v]));
+
+// Nombres que el INFORME escribe sin apellido y que pueden ser más de una
+// persona (hay dos Gerez, dos Marianos): se muestran aparte y avisados, no se
+// le cuelgan a nadie. Confirmado con Fer el 5-ago-2026.
+const PERSONAL_AMBIGUOS = new Set(['gerez', 'mariano', 'juan'].map(claveNombre));
 
 // Ausencias avisadas de antemano: no son "falta", se cuentan aparte.
 const RE_MOTIVO_PLANIF = /vacacion|licencia|curso|home ?office|dias? dados|dia del mecanico|examen|estudio|tramite|acto|reunion|matern|casamiento|franco/;
@@ -4265,12 +4280,22 @@ function historialEventos() {
     });
   }
   evs.forEach(e => { if (!e.claveP) e.claveP = claveNombre(e.persona); });
+  histNombres = new Map();
   // GENERAL: lo acumulado del Sheet + lo cargado a mano, ya parseado por persona
   eventosDeNovedades(historialGeneral, hoy).forEach(e => {
     const pre = e.tipo === 'falta' ? 'Falta' : 'Llegó tarde';
     evs.push(Object.assign({}, e, {
       txt: `${capPalabras(e.persona)} — ${pre}${e.detalle ? ': ' + e.detalle : ''}${e.dias > 1 ? ` (${e.dias} días)` : ''}`,
     }));
+  });
+  // Nombre para mostrar de cada persona: el más completo de TODO el historial,
+  // así no cambia de mes a mes ("Gustavo" en junio, "Alcaraz Gustavo" en julio).
+  evs.forEach(e => {
+    const k = e.claveP;
+    const linda = PERSONAL_AMBIGUOS.has(k) ? capPalabras(k)
+      : capPalabras(String(e.persona || '').replace(/[,;]/g, ' '));
+    if (!linda) return;
+    if (!histNombres.has(k) || linda.length > histNombres.get(k).length) histNombres.set(k, linda);
   });
   return evs;
 }
@@ -4385,7 +4410,7 @@ function histStatsPorPersona(evs, ym) {
     const nombre = String(e.persona || '').trim();
     const key = e.claveP || claveNombre(nombre);
     if (!key) return;
-    const linda = capPalabras(nombre.replace(/[,;]/g, ' '));   // "Alonso, Ines" → "Alonso Ines"
+    const linda = histNombres.get(key) || capPalabras(nombre.replace(/[,;]/g, ' '));
     if (!map.has(key)) map.set(key, { key, persona: linda, area: e.area, faltas: 0, diasFalta: 0, tardes: 0, planif: 0, eventos: [] });
     const r = map.get(key);
     if (e.tipo === 'llegada_tarde') r.tardes++;
@@ -4393,7 +4418,7 @@ function histStatsPorPersona(evs, ym) {
     else { r.faltas++; r.diasFalta += (e.dias || 1); }
     if (e.vendedor) r.vendedor = e.vendedor;
     // el nombre más completo es el que mejor representa a la persona
-    if (linda.length > r.persona.length) r.persona = linda;
+    if (linda.length > r.persona.length) r.persona = linda;   // fallback si no está en histNombres
     if (r.area !== e.area) r.area = 'mixto';
     r.eventos.push(e);
   });
@@ -4484,6 +4509,7 @@ function drawHistorialPersonas(evs, mesSel) {
           <span class="hp-caret">${abierta ? '▼' : '▶'}</span>
           <span class="nm">${escapeHtml(r.persona)}</span>
           <span class="rep-area ${r.area === 'mixto' ? 'general' : r.area}">${AREA_LBL[r.area] || r.area}</span>
+          ${PERSONAL_AMBIGUOS.has(r.key) ? '<span class="rep-area ambiguo" title="El INFORME lo escribe sin apellido y puede ser más de una persona: no se le suma a nadie">sin identificar</span>' : ''}
           ${r.planif ? `<span class="rep-area general" title="Vacaciones, curso o licencia — no cuentan como falta">🌴 ${r.planif}</span>` : ''}
         </span>
         <span class="hp-n falta ${r.faltas ? '' : 'cero'}" title="${r.diasFalta} día${r.diasFalta === 1 ? '' : 's'} sobre ${r.base} que le tocaba estar">
