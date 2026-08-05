@@ -629,6 +629,52 @@ table.gtable tr:hover td:not(.g-cell) { background: var(--vw-grey-1); }
 .rep-area.ventas  { background: #DBEAFE; color: #1E40AF; }
 .rep-area.general { background: var(--vw-grey-2); color: var(--vw-grey-4); }
 
+/* ===== Historial · toolbar (vista + mes) ===== */
+.hist-toolbar {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;
+}
+.hist-vista { display: flex; gap: 4px; background: var(--vw-grey-1); padding: 3px; border-radius: 9px; }
+.hist-vista .hv {
+  padding: 6px 14px; font-size: 13px; font-weight: 600; border: none; cursor: pointer;
+  background: transparent; color: var(--vw-grey-4); border-radius: 7px; font-family: var(--font);
+}
+.hist-vista .hv.sel { background: #fff; color: var(--vw-blue); box-shadow: 0 1px 3px rgba(0,30,80,.12); }
+.hist-mes {
+  padding: 7px 10px; font-size: 13px; font-family: var(--font); color: #111;
+  border: 1px solid var(--vw-grey-2); border-radius: 8px; background: #fff;
+}
+.hist-mes:focus { outline: none; border-color: var(--vw-blue); }
+
+/* ===== Historial · estadística por persona ===== */
+.hp-head, .hp-row {
+  display: grid; grid-template-columns: 1fr 62px 62px 62px;
+  gap: 8px; align-items: center; padding: 9px 18px;
+  border-bottom: 1px solid var(--vw-grey-2);
+}
+.hp-head {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--vw-grey-3); background: var(--vw-grey-1);
+}
+.hp-head span:not(:first-child), .hp-row .hp-n { text-align: center; }
+.hp-row { font-size: 13px; cursor: pointer; }
+.hp-row:hover { background: #F6F9FC; }
+.hp-row.open { background: #F0F6FC; }
+.hp-name { font-weight: 600; display: flex; align-items: center; gap: 7px; min-width: 0; }
+.hp-name .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hp-caret { color: var(--vw-grey-3); font-size: 10px; }
+.hp-n { font-weight: 700; font-size: 14px; }
+.hp-n.cero { color: var(--vw-grey-2); font-weight: 600; }
+.hp-n.falta { color: #B91C1C; }
+.hp-n.tarde { color: #92400E; }
+.hp-n.tot { color: var(--vw-blue); }
+.hp-det { background: #FAFCFE; border-bottom: 1px solid var(--vw-grey-2); padding: 4px 0; }
+.hp-det .hp-ev {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 5px 18px 5px 30px; font-size: 12.5px; color: var(--vw-grey-4);
+}
+.hp-det .hp-ev .hp-when { color: var(--vw-grey-3); white-space: nowrap; }
+.hp-empty { padding: 16px 18px; font-size: 13px; color: var(--vw-grey-3); }
+
 /* ===== Calendario / agenda de guardias ===== */
 .gcal-month {
   background: white; border-radius: var(--radius);
@@ -4000,6 +4046,9 @@ async function snapshotNovedadesGenerales(personal) {
 // día a día en saldos_novedades)
 // =======================================================================
 let historialGeneral = null;   // filas de saldos_novedades
+let histVista = 'persona';     // 'persona' (estadística) | 'dia' (detalle cronológico)
+let histMes   = null;          // 'YYYY-MM' o 'todo' (null = mes en curso)
+const histAbiertas = new Set();// personas con el detalle desplegado
 
 async function renderHistorial() {
   const wrap = document.getElementById('historialContent');
@@ -4014,6 +4063,21 @@ async function renderHistorial() {
   drawHistorial();
 }
 
+// Nombre "limpio" para agrupar: corta motivos/notas pegadas al nombre
+// ("Gisela - turno médico" → "Gisela") y saca acentos para la clave.
+function limpiaPersona(s) {
+  let t = String(s || '').trim();
+  t = t.split(/\s+[-–—]\s+/)[0];       // "Nombre - motivo"
+  t = t.replace(/\s*[(:].*$/, '');      // "Nombre (motivo)" / "Nombre: motivo"
+  return t.trim();
+}
+const RE_ACENTOS = new RegExp('[\\u0300-\\u036f]', 'g');
+function normPersona(s) {
+  // sin acentos ni signos: la clave queda segura para usar en un onclick
+  return String(s || '').normalize('NFD').replace(RE_ACENTOS, '')
+    .toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function historialEventos() {
   const evs = [];
   const hoy = hoyISO();
@@ -4024,19 +4088,21 @@ function historialEventos() {
       const fecha = parts[0], sucursal = parts[1], vendedor = parts[2];
       if (fecha > hoy) return;   // lo futuro no es historial
       if (info.estado === 'falta') {
-        evs.push({ fecha, area: 'ventas', tipo: 'falta',
+        evs.push({ fecha, area: 'ventas', tipo: 'falta', persona: cap(vendedor), sucursal,
+          detalle: info.motivo || '',
           txt: `${cap(vendedor)} (${sucursal}) — Falta${info.motivo ? ': ' + info.motivo : ''}` });
       }
       if (info.llegadaTarde) {
-        evs.push({ fecha, area: 'ventas', tipo: 'llegada_tarde',
+        evs.push({ fecha, area: 'ventas', tipo: 'llegada_tarde', persona: cap(vendedor), sucursal,
+          detalle: info.llegadaTarde,
           txt: `${cap(vendedor)} (${sucursal}) — Llegó tarde ${info.llegadaTarde}` });
       }
       if (info.estado === 'reemplazo' && info.cubiertoPor) {
-        evs.push({ fecha, area: 'ventas', tipo: 'reemplazo',
+        evs.push({ fecha, area: 'ventas', tipo: 'reemplazo', persona: cap(info.cubiertoPor), sucursal,
           txt: `${cap(info.cubiertoPor)} cubrió a ${cap(vendedor)} (${sucursal})` });
       }
       if (info.estado === 'compensa') {
-        evs.push({ fecha, area: 'ventas', tipo: 'compensa',
+        evs.push({ fecha, area: 'ventas', tipo: 'compensa', persona: cap(vendedor), sucursal,
           txt: `${cap(vendedor)} (${sucursal}) — Compensó con crédito de reemplazo` });
       }
     });
@@ -4047,19 +4113,56 @@ function historialEventos() {
     const persona = String(r.persona || '').trim();
     if (!persona) return;
     const pre = r.tipo === 'falta' ? 'Falta: ' : (r.tipo === 'llegada_tarde' ? 'Tarde: ' : '');
-    evs.push({ fecha: r.fecha, area: 'general', tipo: r.tipo, txt: pre + persona });
+    evs.push({ fecha: r.fecha, area: 'general', tipo: r.tipo,
+      persona: limpiaPersona(persona) || persona, detalle: String(r.detalle || '').trim(),
+      txt: pre + persona });
   });
   return evs;
+}
+
+// ---- Toolbar: vista (persona/día) + filtro de mes -----------------------
+function setHistVista(v) { histVista = v; histAbiertas.clear(); drawHistorial(); }
+function setHistMes(m)   { histMes = m; histAbiertas.clear(); drawHistorial(); }
+
+function histToolbar(meses) {
+  const sel = histMesActivo(meses);
+  const opts = ['<option value="todo"' + (sel === 'todo' ? ' selected' : '') + '>Todos los meses</option>']
+    .concat(meses.map(ym => `<option value="${ym}"${ym === sel ? ' selected' : ''}>${escapeHtml(mesLabel(ym))}</option>`));
+  return `<div class="hist-toolbar">
+    <div class="hist-vista">
+      <button class="hv ${histVista === 'persona' ? 'sel' : ''}" onclick="setHistVista('persona')">📊 Por persona</button>
+      <button class="hv ${histVista === 'dia' ? 'sel' : ''}" onclick="setHistVista('dia')">📅 Por día</button>
+    </div>
+    <select class="hist-mes" onchange="setHistMes(this.value)">${opts.join('')}</select>
+  </div>`;
+}
+
+// Mes activo: el elegido, o el mes en curso si tiene datos, o el más reciente.
+function histMesActivo(meses) {
+  if (histMes && (histMes === 'todo' || meses.includes(histMes))) return histMes;
+  const actual = hoyISO().slice(0, 7);
+  if (meses.includes(actual)) return actual;
+  return meses[0] || 'todo';
 }
 
 function drawHistorial() {
   const wrap = document.getElementById('historialContent');
   if (!wrap) return;
-  const evs = historialEventos();
-  if (!evs.length) {
+  const todos = historialEventos();
+  if (!todos.length) {
     wrap.innerHTML = `<div class="empty"><div class="ico">📚</div>
       <div style="font-size:15px; color:var(--vw-grey-4); font-weight:600">Sin historial todavía</div>
       <div style="font-size:12px;color:var(--vw-grey-3);margin-top:6px">Se va acumulando día a día con las guardias de ventas y las novedades del Sheet.</div></div>`;
+    return;
+  }
+
+  const meses = Array.from(new Set(todos.map(e => e.fecha.slice(0, 7)))).sort().reverse();
+  const mesSel = histMesActivo(meses);
+  const evs = mesSel === 'todo' ? todos : todos.filter(e => e.fecha.slice(0, 7) === mesSel);
+  const toolbar = histToolbar(meses);
+
+  if (histVista === 'persona') {
+    wrap.innerHTML = toolbar + drawHistorialPersonas(evs, mesSel);
     return;
   }
 
@@ -4114,7 +4217,80 @@ function drawHistorial() {
       </div>`;
   }).join('');
 
-  wrap.innerHTML = bloques;
+  wrap.innerHTML = toolbar + bloques;
+}
+
+// =======================================================================
+// HISTORIAL · estadística por persona (cuántas veces faltó / llegó tarde)
+// =======================================================================
+function capPalabras(s) {
+  return String(s || '').toLowerCase().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function histStatsPorPersona(evs) {
+  const map = new Map();  // clave normalizada → { persona, area, faltas, tardes, eventos[] }
+  evs.forEach(e => {
+    if (e.tipo !== 'falta' && e.tipo !== 'llegada_tarde') return;   // reempl./comp. no son novedad de asistencia
+    const nombre = String(e.persona || '').trim();
+    const key = normPersona(nombre);
+    if (!key) return;
+    if (!map.has(key)) map.set(key, { key, persona: capPalabras(nombre), area: e.area, faltas: 0, tardes: 0, eventos: [] });
+    const r = map.get(key);
+    if (e.tipo === 'falta') r.faltas++; else r.tardes++;
+    if (r.area !== e.area) r.area = 'mixto';
+    r.eventos.push(e);
+  });
+  const filas = Array.from(map.values());
+  filas.forEach(r => { r.total = r.faltas + r.tardes; r.eventos.sort((a, b) => b.fecha.localeCompare(a.fecha)); });
+  filas.sort((a, b) => b.total - a.total || b.faltas - a.faltas || a.persona.localeCompare(b.persona));
+  return filas;
+}
+
+function toggleHistPersona(key) {
+  if (histAbiertas.has(key)) histAbiertas.delete(key); else histAbiertas.add(key);
+  drawHistorial();
+}
+
+function drawHistorialPersonas(evs, mesSel) {
+  const filas = histStatsPorPersona(evs);
+  const titulo = mesSel === 'todo' ? 'Acumulado histórico' : mesLabel(mesSel);
+  if (!filas.length) {
+    return `<div class="personal-wrap">
+      <div class="personal-header-main">📊 ${escapeHtml(titulo)} · por persona</div>
+      <div class="hp-empty">Sin faltas ni llegadas tarde registradas en este período. 👏</div>
+    </div>`;
+  }
+  const totF = filas.reduce((a, r) => a + r.faltas, 0);
+  const totT = filas.reduce((a, r) => a + r.tardes, 0);
+  const AREA_LBL = { ventas: 'Ventas', general: 'General', mixto: 'Mixto' };
+  const ICO = { falta: '⚠️', llegada_tarde: '⏰' };
+
+  const rows = filas.map(r => {
+    const abierta = histAbiertas.has(r.key);
+    const det = !abierta ? '' : `<div class="hp-det">${r.eventos.map(e => `
+      <div class="hp-ev">
+        <span>${ICO[e.tipo] || '📌'} ${e.tipo === 'falta' ? 'Falta' : 'Llegó tarde'}${e.detalle ? ' — ' + escapeHtml(e.detalle) : ''}${e.sucursal ? ' · ' + escapeHtml(e.sucursal) : ''}</span>
+        <span class="hp-when">${dowName(e.fecha)} ${fechaDM(e.fecha)}</span>
+      </div>`).join('')}</div>`;
+    return `
+      <div class="hp-row ${abierta ? 'open' : ''}" onclick="toggleHistPersona('${r.key}')">
+        <span class="hp-name">
+          <span class="hp-caret">${abierta ? '▼' : '▶'}</span>
+          <span class="nm">${escapeHtml(r.persona)}</span>
+          <span class="rep-area ${r.area === 'mixto' ? 'general' : r.area}">${AREA_LBL[r.area] || r.area}</span>
+        </span>
+        <span class="hp-n falta ${r.faltas ? '' : 'cero'}">${r.faltas}</span>
+        <span class="hp-n tarde ${r.tardes ? '' : 'cero'}">${r.tardes}</span>
+        <span class="hp-n tot">${r.total}</span>
+      </div>${det}`;
+  }).join('');
+
+  return `<div class="personal-wrap" style="margin-bottom:16px">
+    <div class="personal-header-main">📊 ${escapeHtml(titulo)} · ${filas.length} persona${filas.length === 1 ? '' : 's'} · ${totF} falta${totF === 1 ? '' : 's'} · ${totT} tarde${totT === 1 ? '' : 's'}</div>
+    <div class="hp-head"><span>Persona</span><span>Faltas</span><span>Tarde</span><span>Total</span></div>
+    ${rows}
+    <div style="padding:10px 18px;font-size:11.5px;color:var(--vw-grey-3)">Tocá una fila para ver los días. Reemplazos y compensaciones no cuentan como falta.</div>
+  </div>`;
 }
 
 function fmtDateKey(d) {
