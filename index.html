@@ -4091,9 +4091,9 @@ function normPersona(s) {
 // Clave con los tokens ordenados, así "Giacomino, Susana" y "Susana Giacomino"
 // caen en la misma persona.
 function claveNombre(s) {
-  const t = normPersona(s).split(' ').filter(Boolean);
-  const reales = t.filter(w => w.length > 1);          // ignora iniciales: "C.Zarza" = "Zarza"
-  return (reales.length ? reales : t).sort().join(' ');
+  // Las iniciales SE CONSERVAN: son lo único que distingue a "Mariano P" de
+  // "Mariano M". Quién es cada inicial lo resuelve mapaAlias.
+  return normPersona(s).split(' ').filter(Boolean).sort().join(' ');
 }
 function capPalabras(s) {
   return String(s || '').toLowerCase().split(/\s+/).filter(Boolean)
@@ -4121,13 +4121,16 @@ const PERSONAL_ALIAS = {
   'C.Zarza': 'Cesar Zarza',
   'Nico O': 'Nicolas Ojeda',
   'Ojeda': 'Nicolas Ojeda',
+  'Juan': 'Juan Marquevich',
+  'Marquevich': 'Juan Marquevich',
 };
 const PADRON_ALIAS = new Map(Object.entries(PERSONAL_ALIAS).map(([k, v]) => [claveNombre(k), v]));
 
 // Nombres que el INFORME escribe sin apellido y que pueden ser más de una
-// persona (hay dos Gerez, dos Marianos): se muestran aparte y avisados, no se
-// le cuelgan a nadie. Confirmado con Fer el 5-ago-2026.
-const PERSONAL_AMBIGUOS = new Set(['gerez', 'mariano', 'juan'].map(claveNombre));
+// persona (hay dos Gerez y dos Marianos): se muestran aparte y avisados, no se
+// le cuelgan a nadie. Fer pidió a la planilla que de agosto-2026 en adelante
+// escriban al menos la inicial del apellido — con eso se resuelven solos.
+const PERSONAL_AMBIGUOS = new Set(['gerez', 'gerez m', 'mariano'].map(claveNombre));
 
 // Ausencias avisadas de antemano: no son "falta", se cuentan aparte.
 const RE_MOTIVO_PLANIF = /vacacion|licencia|curso|home ?office|dias? dados|dia del mecanico|examen|estudio|tramite|acto|reunion|matern|casamiento|franco/;
@@ -4175,7 +4178,9 @@ function parseFalta(txt) {
 // Apodos y apellidos sueltos: se pegan a un nombre completo SÓLO si hay un
 // único candidato posible. Si es ambiguo queda separado (no inventamos).
 function mapaAlias(nombres) {
-  const tokens = n => normPersona(n).split(' ').filter(w => w.length >= 3);
+  const partes  = n => normPersona(n).split(' ').filter(Boolean);
+  const tokens  = n => partes(n).filter(w => w.length >= 3);
+  const inicial = n => partes(n).filter(w => w.length < 3);
   const completos = new Map();   // clave → tokens
   nombres.forEach(n => { const t = tokens(n); if (t.length >= 2) completos.set(claveNombre(n), t); });
   const alias = new Map();
@@ -4183,8 +4188,15 @@ function mapaAlias(nombres) {
     const t = tokens(n);
     if (t.length >= 2) return;                       // ya es nombre completo
     if (!t.length) return;
+    const ini = inicial(n);
     const cands = [];
-    completos.forEach((ct, ck) => { if (t.every(w => ct.includes(w))) cands.push(ck); });
+    completos.forEach((ct, ck) => {
+      if (!t.every(w => ct.includes(w))) return;
+      // Si viene con inicial, tiene que arrancar alguna de las OTRAS palabras
+      // del nombre completo: "Mariano P" → Mariano Paz, nunca Mariano Muñiz.
+      if (ini.length && !ini.every(i => ct.some(w => !t.includes(w) && w.charAt(0) === i.charAt(0)))) return;
+      cands.push(ck);
+    });
     if (cands.length === 1) alias.set(claveNombre(n), cands[0]);
   });
   return alias;
