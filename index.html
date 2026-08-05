@@ -4058,24 +4058,156 @@ async function renderHistorial() {
   if (!guardiasLoaded && !guardiasSinTabla) { try { await loadGuardiasOverrides(); } catch (e) {} }
   // General: acumulado día a día de las novedades del Sheet
   try {
-    historialGeneral = await sbFetch('saldos_novedades?select=fecha,area,tipo,persona,detalle&order=fecha.desc');
+    historialGeneral = await sbFetch('saldos_novedades?select=fecha,area,tipo,persona,detalle,origen&order=fecha.desc');
   } catch (e) { console.error('historial general:', e); historialGeneral = []; }
   drawHistorial();
 }
 
-// Nombre "limpio" para agrupar: corta motivos/notas pegadas al nombre
-// ("Gisela - turno médico" → "Gisela") y saca acentos para la clave.
-function limpiaPersona(s) {
-  let t = String(s || '').trim();
-  t = t.split(/\s+[-–—]\s+/)[0];       // "Nombre - motivo"
-  t = t.replace(/\s*[(:].*$/, '');      // "Nombre (motivo)" / "Nombre: motivo"
-  return t.trim();
-}
+// =======================================================================
+// NOVEDADES DEL SHEET · parseo del texto libre a eventos por persona
+// El INFORME las anota a mano y con mil formatos distintos:
+//   "Antonella (9:06), Mónica G (8:51) y Susana (9:45)"
+//   "Alcaraz 08:53 / Zarza 08:13 / Gomez 09:03"
+//   "Paz Mariano 08:40-Chaparro C 08:06-Laso 08:49"
+//   "Gonzalez Ricardo ( No ficho)" · "Jorge Fazzini -vacaciones-"
+// =======================================================================
 const RE_ACENTOS = new RegExp('[\\u0300-\\u036f]', 'g');
 function normPersona(s) {
   // sin acentos ni signos: la clave queda segura para usar en un onclick
   return String(s || '').normalize('NFD').replace(RE_ACENTOS, '')
     .toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+// Clave con los tokens ordenados, así "Giacomino, Susana" y "Susana Giacomino"
+// caen en la misma persona.
+function claveNombre(s) {
+  const t = normPersona(s).split(' ').filter(Boolean);
+  const reales = t.filter(w => w.length > 1);          // ignora iniciales: "C.Zarza" = "Zarza"
+  return (reales.length ? reales : t).sort().join(' ');
+}
+function capPalabras(s) {
+  return String(s || '').toLowerCase().split(/\s+/).filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+// Ausencias avisadas de antemano: no son "falta", se cuentan aparte.
+const RE_MOTIVO_PLANIF = /vacacion|licencia|curso|home ?office|dias? dados|dia del mecanico|examen|estudio|tramite|acto|reunion|matern|casamiento|franco/;
+function esPlanificada(motivo) { return RE_MOTIVO_PLANIF.test(normPersona(motivo)); }
+
+// De un trozo de texto suelto saca el nombre (lo que está pegado a la hora).
+function nombreDeTrozo(bruto) {
+  let t = String(bruto || '');
+  const trozos = t.split(/[,;\/()]|\s[-–—]|[-–—]\s/).filter(x => x.trim());
+  t = trozos.length ? trozos[trozos.length - 1] : '';
+  t = t.replace(/[()\/,;]/g, ' ').replace(/\s+/g, ' ').trim();
+  t = t.replace(/^(y|e)\s+/i, '');                    // "y Susana" → "Susana"
+  t = t.replace(/^[-–—\s]+|[-–—\s]+$/g, '');
+  const pal = t.split(' ').filter(Boolean);
+  if (!pal.length) return '';
+  return pal.slice(-3).join(' ');                     // "por consulta medica Juan" → "Juan"
+}
+
+// Una fila de "Tarde" puede tener varias personas: la hora es el ancla.
+function parseTardes(txt) {
+  const s = String(txt || '');
+  const re = /(\d{1,2})[:.](\d{2})/g;
+  const out = [];
+  let last = 0, m;
+  while ((m = re.exec(s))) {
+    const nombre = nombreDeTrozo(s.slice(last, m.index));
+    last = m.index + m[0].length;
+    if (nombre) out.push({ persona: nombre, hora: m[1] + ':' + m[2] });
+  }
+  return out;
+}
+
+// Una fila de "Ausentes" es una persona + el motivo entre () o entre guiones.
+function parseFalta(txt) {
+  let s = String(txt || '').trim();
+  let motivo = '';
+  let m = s.match(/\(([^)]*)\)/);
+  if (m) { motivo = m[1].trim(); s = s.replace(m[0], ' '); }
+  m = s.match(/[-–—]\s*([^-–—]+?)\s*[-–—]/);
+  if (m) { if (!motivo) motivo = m[1].trim(); s = s.replace(m[0], ' '); }
+  s = s.replace(/[-–—]/g, ' ').replace(/\s+/g, ' ').trim();
+  return { persona: s, motivo };
+}
+
+// Apodos y apellidos sueltos: se pegan a un nombre completo SÓLO si hay un
+// único candidato posible. Si es ambiguo queda separado (no inventamos).
+function mapaAlias(nombres) {
+  const tokens = n => normPersona(n).split(' ').filter(w => w.length >= 3);
+  const completos = new Map();   // clave → tokens
+  nombres.forEach(n => { const t = tokens(n); if (t.length >= 2) completos.set(claveNombre(n), t); });
+  const alias = new Map();
+  nombres.forEach(n => {
+    const t = tokens(n);
+    if (t.length >= 2) return;                       // ya es nombre completo
+    if (!t.length) return;
+    const cands = [];
+    completos.forEach((ct, ck) => { if (t.every(w => ct.includes(w))) cands.push(ck); });
+    if (cands.length === 1) alias.set(claveNombre(n), cands[0]);
+  });
+  return alias;
+}
+
+// El Sheet es una foto del día: si la app no se abre, se pierde el día, y si
+// la novedad queda pegada se re-snapshotea igual. Por eso el mismo evento
+// (misma persona, mismo motivo/hora) en días cercanos cuenta como UNO solo.
+function comprimirEpisodios(evs) {
+  const grupos = new Map();
+  evs.forEach(e => {
+    const k = [e.claveP, e.tipo, normPersona(e.firma || '')].join('|');
+    (grupos.get(k) || grupos.set(k, []).get(k)).push(e);
+  });
+  const out = [];
+  grupos.forEach(lista => {
+    lista.sort((a, b) => a.fecha.localeCompare(b.fecha));
+    let ep = null;
+    lista.forEach(e => {
+      const gap = ep ? (_gd(e.fecha) - _gd(ep.hasta)) / 86400000 : 99;
+      // se corta al cambiar de mes: cada mes cuenta lo suyo
+      if (ep && gap <= 4 && ep.fecha.slice(0, 7) === e.fecha.slice(0, 7)) { ep.dias++; ep.hasta = e.fecha; return; }
+      ep = Object.assign({}, e, { dias: 1, hasta: e.fecha });
+      out.push(ep);
+    });
+  });
+  return out;
+}
+
+// Filas de saldos_novedades (Sheet + carga manual) → eventos por persona
+function eventosDeNovedades(rows, hoy) {
+  const crudos = [];
+  (rows || []).forEach(r => {
+    if (!r.fecha || r.fecha > hoy) return;
+    const txt = String(r.persona || '').trim();
+    if (!txt) return;
+    const manual = r.origen === 'portal';
+    if (r.tipo === 'llegada_tarde') {
+      const personas = manual ? [{ persona: txt, hora: String(r.detalle || '') }] : parseTardes(txt);
+      // si no se pudo leer ninguna hora, se toma el texto entero como persona
+      (personas.length ? personas : [{ persona: txt, hora: '' }]).forEach(p => {
+        crudos.push({ fecha: r.fecha, area: 'general', tipo: 'llegada_tarde', origen: r.origen,
+          persona: p.persona, firma: p.hora, detalle: p.hora, crudo: txt });
+      });
+    } else if (r.tipo === 'falta') {
+      const p = manual ? { persona: txt, motivo: String(r.detalle || '') } : parseFalta(txt);
+      if (!p.persona) return;
+      const motivo = p.motivo || (manual ? '' : String(r.detalle || ''));
+      crudos.push({ fecha: r.fecha, area: 'general', tipo: 'falta', origen: r.origen,
+        persona: p.persona, firma: motivo, detalle: motivo, crudo: txt,
+        planificada: esPlanificada(motivo) });
+    }
+    // tipo 'otro': no se cuenta (no sabemos si es falta o llegada tarde)
+  });
+  // unificar apodos y comprimir episodios repetidos del Sheet
+  const alias = mapaAlias(crudos.map(e => e.persona));
+  crudos.forEach(e => {
+    const k = claveNombre(e.persona);
+    e.claveP = alias.get(k) || k;
+  });
+  const delSheet = comprimirEpisodios(crudos.filter(e => e.origen !== 'portal'));
+  const manuales = crudos.filter(e => e.origen === 'portal').map(e => Object.assign({ dias: 1, hasta: e.fecha }, e));
+  return delSheet.concat(manuales);
 }
 
 function historialEventos() {
@@ -4089,12 +4221,12 @@ function historialEventos() {
       if (fecha > hoy) return;   // lo futuro no es historial
       if (info.estado === 'falta') {
         evs.push({ fecha, area: 'ventas', tipo: 'falta', persona: cap(vendedor), sucursal,
-          detalle: info.motivo || '',
+          detalle: info.motivo || '', dias: 1, hasta: fecha, planificada: esPlanificada(info.motivo),
           txt: `${cap(vendedor)} (${sucursal}) — Falta${info.motivo ? ': ' + info.motivo : ''}` });
       }
       if (info.llegadaTarde) {
         evs.push({ fecha, area: 'ventas', tipo: 'llegada_tarde', persona: cap(vendedor), sucursal,
-          detalle: info.llegadaTarde,
+          detalle: info.llegadaTarde, dias: 1, hasta: fecha,
           txt: `${cap(vendedor)} (${sucursal}) — Llegó tarde ${info.llegadaTarde}` });
       }
       if (info.estado === 'reemplazo' && info.cubiertoPor) {
@@ -4107,15 +4239,13 @@ function historialEventos() {
       }
     });
   }
-  // GENERAL: lo acumulado del Sheet en Supabase
-  (historialGeneral || []).forEach(r => {
-    if (!r.fecha || r.fecha > hoy) return;
-    const persona = String(r.persona || '').trim();
-    if (!persona) return;
-    const pre = r.tipo === 'falta' ? 'Falta: ' : (r.tipo === 'llegada_tarde' ? 'Tarde: ' : '');
-    evs.push({ fecha: r.fecha, area: 'general', tipo: r.tipo,
-      persona: limpiaPersona(persona) || persona, detalle: String(r.detalle || '').trim(),
-      txt: pre + persona });
+  evs.forEach(e => { if (!e.claveP) e.claveP = claveNombre(e.persona); });
+  // GENERAL: lo acumulado del Sheet + lo cargado a mano, ya parseado por persona
+  eventosDeNovedades(historialGeneral, hoy).forEach(e => {
+    const pre = e.tipo === 'falta' ? 'Falta' : 'Llegó tarde';
+    evs.push(Object.assign({}, e, {
+      txt: `${capPalabras(e.persona)} — ${pre}${e.detalle ? ': ' + e.detalle : ''}${e.dias > 1 ? ` (${e.dias} días)` : ''}`,
+    }));
   });
   return evs;
 }
@@ -4223,20 +4353,21 @@ function drawHistorial() {
 // =======================================================================
 // HISTORIAL · estadística por persona (cuántas veces faltó / llegó tarde)
 // =======================================================================
-function capPalabras(s) {
-  return String(s || '').toLowerCase().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-}
-
 function histStatsPorPersona(evs) {
-  const map = new Map();  // clave normalizada → { persona, area, faltas, tardes, eventos[] }
+  const map = new Map();  // clave → { persona, area, faltas, tardes, planif, eventos[] }
   evs.forEach(e => {
     if (e.tipo !== 'falta' && e.tipo !== 'llegada_tarde') return;   // reempl./comp. no son novedad de asistencia
     const nombre = String(e.persona || '').trim();
-    const key = normPersona(nombre);
+    const key = e.claveP || claveNombre(nombre);
     if (!key) return;
-    if (!map.has(key)) map.set(key, { key, persona: capPalabras(nombre), area: e.area, faltas: 0, tardes: 0, eventos: [] });
+    const linda = capPalabras(nombre.replace(/[,;]/g, ' '));   // "Alonso, Ines" → "Alonso Ines"
+    if (!map.has(key)) map.set(key, { key, persona: linda, area: e.area, faltas: 0, tardes: 0, planif: 0, eventos: [] });
     const r = map.get(key);
-    if (e.tipo === 'falta') r.faltas++; else r.tardes++;
+    if (e.tipo === 'llegada_tarde') r.tardes++;
+    else if (e.planificada) r.planif++;      // vacaciones/curso/licencia: no es falta
+    else r.faltas++;
+    // el nombre más completo es el que mejor representa a la persona
+    if (linda.length > r.persona.length) r.persona = linda;
     if (r.area !== e.area) r.area = 'mixto';
     r.eventos.push(e);
   });
@@ -4262,22 +4393,27 @@ function drawHistorialPersonas(evs, mesSel) {
   }
   const totF = filas.reduce((a, r) => a + r.faltas, 0);
   const totT = filas.reduce((a, r) => a + r.tardes, 0);
+  const totP = filas.reduce((a, r) => a + r.planif, 0);
   const AREA_LBL = { ventas: 'Ventas', general: 'General', mixto: 'Mixto' };
   const ICO = { falta: '⚠️', llegada_tarde: '⏰' };
 
   const rows = filas.map(r => {
     const abierta = histAbiertas.has(r.key);
-    const det = !abierta ? '' : `<div class="hp-det">${r.eventos.map(e => `
-      <div class="hp-ev">
-        <span>${ICO[e.tipo] || '📌'} ${e.tipo === 'falta' ? 'Falta' : 'Llegó tarde'}${e.detalle ? ' — ' + escapeHtml(e.detalle) : ''}${e.sucursal ? ' · ' + escapeHtml(e.sucursal) : ''}</span>
-        <span class="hp-when">${dowName(e.fecha)} ${fechaDM(e.fecha)}</span>
-      </div>`).join('')}</div>`;
+    const det = !abierta ? '' : `<div class="hp-det">${r.eventos.map(e => {
+      const lbl = e.tipo === 'llegada_tarde' ? 'Llegó tarde' : (e.planificada ? 'Ausencia avisada' : 'Falta');
+      const cuando = e.dias > 1 ? `${fechaDM(e.fecha)} → ${fechaDM(e.hasta)} (${e.dias} días)` : `${dowName(e.fecha)} ${fechaDM(e.fecha)}`;
+      return `<div class="hp-ev">
+        <span>${e.tipo === 'llegada_tarde' ? ICO.llegada_tarde : (e.planificada ? '🌴' : ICO.falta)} ${lbl}${e.detalle ? ' — ' + escapeHtml(e.detalle) : ''}${e.sucursal ? ' · ' + escapeHtml(e.sucursal) : ''}</span>
+        <span class="hp-when">${cuando}</span>
+      </div>`;
+    }).join('')}</div>`;
     return `
       <div class="hp-row ${abierta ? 'open' : ''}" onclick="toggleHistPersona('${r.key}')">
         <span class="hp-name">
           <span class="hp-caret">${abierta ? '▼' : '▶'}</span>
           <span class="nm">${escapeHtml(r.persona)}</span>
           <span class="rep-area ${r.area === 'mixto' ? 'general' : r.area}">${AREA_LBL[r.area] || r.area}</span>
+          ${r.planif ? `<span class="rep-area general" title="Vacaciones, curso o licencia — no cuentan como falta">🌴 ${r.planif}</span>` : ''}
         </span>
         <span class="hp-n falta ${r.faltas ? '' : 'cero'}">${r.faltas}</span>
         <span class="hp-n tarde ${r.tardes ? '' : 'cero'}">${r.tardes}</span>
@@ -4286,10 +4422,13 @@ function drawHistorialPersonas(evs, mesSel) {
   }).join('');
 
   return `<div class="personal-wrap" style="margin-bottom:16px">
-    <div class="personal-header-main">📊 ${escapeHtml(titulo)} · ${filas.length} persona${filas.length === 1 ? '' : 's'} · ${totF} falta${totF === 1 ? '' : 's'} · ${totT} tarde${totT === 1 ? '' : 's'}</div>
+    <div class="personal-header-main">📊 ${escapeHtml(titulo)} · ${filas.length} persona${filas.length === 1 ? '' : 's'} · ${totF} falta${totF === 1 ? '' : 's'} · ${totT} tarde${totT === 1 ? '' : 's'}${totP ? ` · ${totP} ausencia${totP === 1 ? '' : 's'} avisada${totP === 1 ? '' : 's'}` : ''}</div>
     <div class="hp-head"><span>Persona</span><span>Faltas</span><span>Tarde</span><span>Total</span></div>
     ${rows}
-    <div style="padding:10px 18px;font-size:11.5px;color:var(--vw-grey-3)">Tocá una fila para ver los días. Reemplazos y compensaciones no cuentan como falta.</div>
+    <div style="padding:10px 18px;font-size:11.5px;color:var(--vw-grey-3);line-height:1.5">
+      Tocá una fila para ver los días. No cuentan como falta: vacaciones, curso o licencia (🌴), ni los reemplazos y compensaciones de Ventas.<br>
+      Los nombres de la lista general salen del texto del INFORME; un mismo episodio anotado varios días seguidos cuenta una sola vez.
+    </div>
   </div>`;
 }
 
