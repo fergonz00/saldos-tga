@@ -4026,6 +4026,15 @@ function parseNovedadesPersonal(personal) {
 
 // Acumula en Supabase lo que trae el Sheet (dedup) — de acá sale el Historial
 // general día a día. No requiere tocar nada en Sheets; corre solo al abrir la app.
+//
+// LA FOTO QUE VALE ES LA DEL MEDIODÍA (pedido de Fer, 10-ago-2026): la planilla
+// se termina de ordenar durante la mañana — la ausencia de ayer queda pegada un
+// rato aunque la persona ya haya fichado — así que a partir de las 12 el
+// snapshot RECONCILIA lo que se guardó hoy más temprano. No se saltea la foto
+// de la mañana porque la app se abre casi siempre entre las 9 y las 11: si
+// esperáramos al mediodía, los días que nadie la abre después quedarían vacíos.
+const HORA_FOTO = 12;
+
 async function snapshotNovedadesGenerales(personal) {
   const parsed = parseNovedadesPersonal(personal);
   if (!parsed.length) return;
@@ -4040,7 +4049,25 @@ async function snapshotNovedadesGenerales(personal) {
       headers: { 'Prefer': 'resolution=ignore-duplicates,return=minimal' },
       body: JSON.stringify(eventos),
     });
+    if (new Date().getHours() >= HORA_FOTO) await reconciliarFotoDelDia(eventos);
   } catch (e) { console.error('snapshot novedades:', e); }
+}
+
+// Del mediodía en adelante la planilla ya está al día: lo que se snapshoteó hoy
+// más temprano y ya NO figura en el INFORME era arrastre y se borra. Sólo toca
+// filas del Sheet creadas HOY — el histórico viejo (incluidas las ausencias con
+// fecha de reincorporación futura) y lo cargado a mano no se tocan nunca.
+// Caso testigo: Antonella el 7-ago-2026 figuraba ausente en la foto de las 9:44
+// y a las 15:25 ya estaba en "Tarde" con 9:08 — había venido.
+async function reconciliarFotoDelDia(eventos) {
+  const vivas = new Set(eventos.map(e => e.dedup_key));
+  const desde = encodeURIComponent(hoyISO() + 'T00:00:00-03:00');
+  const rows = await sbFetch('saldos_novedades?select=id,dedup_key&origen=eq.sheet&created_at=gte.' + desde);
+  const sobran = (rows || []).filter(r => !vivas.has(r.dedup_key)).map(r => r.id);
+  if (!sobran.length) return;
+  await sbFetch('saldos_novedades?id=in.(' + sobran.join(',') + ')', {
+    method: 'DELETE', headers: { 'Prefer': 'return=minimal' },
+  });
 }
 
 // =======================================================================
@@ -4069,7 +4096,7 @@ async function renderHistorial() {
   if (!guardiasLoaded && !guardiasSinTabla) { try { await loadGuardiasOverrides(); } catch (e) {} }
   // General: acumulado día a día de las novedades del Sheet
   try {
-    historialGeneral = await sbFetch('saldos_novedades?select=fecha,area,tipo,persona,detalle,origen&order=fecha.desc');
+    historialGeneral = await sbFetch('saldos_novedades?select=fecha,area,tipo,persona,detalle,origen,created_at&order=fecha.desc');
   } catch (e) { console.error('historial general:', e); historialGeneral = []; }
   drawHistorial();
 }
@@ -4227,6 +4254,30 @@ function comprimirEpisodios(evs) {
   return out;
 }
 
+// Si la misma persona figura el mismo día como AUSENTE y como LLEGADA TARDE,
+// la planilla se está contradiciendo: gana lo que traiga la foto más tarde,
+// porque el INFORME se corrige a lo largo de la mañana (la ausencia de ayer
+// queda pegada y recién después la borran). Empate = la falta.
+// Caso testigo: Antonella el 7-ago-2026 — ausente en la foto de las 9:44,
+// "Antonella (9:08)" en la de las 15:25. Vino: la falta era arrastre del 6.
+function resolverContradicciones(evs) {
+  const porDia = new Map();
+  evs.forEach(e => {
+    const k = e.claveP + '|' + e.fecha;
+    (porDia.get(k) || porDia.set(k, []).get(k)).push(e);
+  });
+  const fuera = new Set();
+  porDia.forEach(lista => {
+    const faltas = lista.filter(e => e.tipo === 'falta');
+    const tardes = lista.filter(e => e.tipo === 'llegada_tarde');
+    if (!faltas.length || !tardes.length) return;
+    const tf = Math.max.apply(null, faltas.map(e => e.visto || 0));
+    const tt = Math.max.apply(null, tardes.map(e => e.visto || 0));
+    (tt > tf ? faltas : tardes).forEach(e => fuera.add(e));
+  });
+  return fuera.size ? evs.filter(e => !fuera.has(e)) : evs;
+}
+
 // Filas de saldos_novedades (Sheet + carga manual) → eventos por persona
 function eventosDeNovedades(rows, hoy) {
   const crudos = [];
@@ -4235,19 +4286,22 @@ function eventosDeNovedades(rows, hoy) {
     const txt = String(r.persona || '').trim();
     if (!txt) return;
     const manual = r.origen === 'portal';
+    // Cuándo se sacó la foto que trajo esta fila. Lo cargado a mano tiene fecha
+    // real, así que le gana a cualquier foto del Sheet (ver resolverContradicciones).
+    const visto = manual ? Infinity : (Date.parse(r.created_at || '') || 0);
     if (r.tipo === 'llegada_tarde') {
       const personas = manual ? [{ persona: txt, hora: String(r.detalle || '') }] : parseTardes(txt);
       // si no se pudo leer ninguna hora, se toma el texto entero como persona
       (personas.length ? personas : [{ persona: txt, hora: '' }]).forEach(p => {
         crudos.push({ fecha: r.fecha, area: 'general', tipo: 'llegada_tarde', origen: r.origen,
-          persona: p.persona, firma: p.hora, detalle: p.hora, crudo: txt });
+          persona: p.persona, firma: p.hora, detalle: p.hora, crudo: txt, visto });
       });
     } else if (r.tipo === 'falta') {
       const p = manual ? { persona: txt, motivo: String(r.detalle || '') } : parseFalta(txt);
       if (!p.persona) return;
       const motivo = p.motivo || (manual ? '' : String(r.detalle || ''));
       crudos.push({ fecha: r.fecha, area: 'general', tipo: 'falta', origen: r.origen,
-        persona: p.persona, firma: motivo, detalle: motivo, crudo: txt,
+        persona: p.persona, firma: motivo, detalle: motivo, crudo: txt, visto,
         planificada: esPlanificada(motivo) });
     }
     // tipo 'otro': no se cuenta (no sabemos si es falta o llegada tarde)
@@ -4264,8 +4318,10 @@ function eventosDeNovedades(rows, hoy) {
     const k = claveNombre(e.persona);
     e.claveP = alias.get(k) || k;
   });
-  const delSheet = comprimirEpisodios(crudos.filter(e => e.origen !== 'portal'));
-  const manuales = crudos.filter(e => e.origen === 'portal').map(e => Object.assign({ dias: 1, hasta: e.fecha }, e));
+  // 3) nadie puede haber faltado y llegado tarde el mismo día
+  const limpios = resolverContradicciones(crudos);
+  const delSheet = comprimirEpisodios(limpios.filter(e => e.origen !== 'portal'));
+  const manuales = limpios.filter(e => e.origen === 'portal').map(e => Object.assign({ dias: 1, hasta: e.fecha }, e));
   return delSheet.concat(manuales);
 }
 
