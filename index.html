@@ -1375,6 +1375,124 @@ function _comprasCardsHtml() {
 }
 
 // =======================================================================
+// ⭐ PRIORIDAD PARA PAGAR (pedidos de la administración)
+// -----------------------------------------------------------------------
+// Hasta que la unidad no está pagada a VW, fábrica no libera el CERTIFICADO y
+// la administración no puede patentar. Desde la solapa "Adm. ventas" de
+// gestion.titogonzalez.online, Mónica marca la unidad que necesita ya: eso
+// escribe las columnas `prioridad_*` de la tabla `adm_ventas` (Supabase wjfgl),
+// que acá se leen directo con la anon key. El pedido se cruza con compras_vw
+// por SERIE (y, si falta, por N° de preventa).
+// Se cierra solo al registrar el pago, o a mano con "✓ listo".
+// =======================================================================
+let prioridades = [];        // pedidos con prioridad_certificado = true
+let prioSolo = false;        // toggle: mostrar en la grilla solo las prioritarias
+
+async function loadPrioridades() {
+  try {
+    const cols = 'preventa,prioridad_nota,prioridad_ts,prioridad_por,prioridad_serie,prioridad_listo_ts,prioridad_listo_por';
+    const r = await sbFetch('adm_ventas?select=' + cols + '&prioridad_certificado=is.true&order=prioridad_ts.asc');
+    prioridades = Array.isArray(r) ? r : [];
+  } catch (e) { console.error('loadPrioridades:', e); }
+}
+// "PV 08058/1" → "8058/1" (misma normalización que usa adm_ventas)
+function _prioNormPv(s) {
+  const t = String(s || '').replace(/^PV\s*/i, '').trim();
+  const p = t.split('/');
+  const izq = String(parseInt(p[0], 10) || p[0] || '').trim();
+  return p.length > 1 ? izq + '/' + String(p[1]).trim() : izq;
+}
+function _prioPendientes() { return prioridades.filter(p => !p.prioridad_listo_ts); }
+// Pedido PENDIENTE que corresponde a una fila de compras_vw (por serie o por PV)
+function _prioDeCompra(c) {
+  if (!c) return null;
+  const s = String(c.serie || '').trim().toUpperCase();
+  const pv = c.pv ? _prioNormPv(c.pv.numero) : (c.preventaOversoft ? _prioNormPv(c.preventaOversoft) : '');
+  return _prioPendientes().find(p =>
+    (s && String(p.prioridad_serie || '').trim().toUpperCase() === s) ||
+    (pv && String(p.preventa || '').trim() === pv)) || null;
+}
+function _prioCompraDe(p) {
+  const s = String(p.prioridad_serie || '').trim().toUpperCase();
+  const compras = (comprasVWData && comprasVWData.compras) || [];
+  return compras.find(c => String(c.serie || '').trim().toUpperCase() === s)
+      || compras.find(c => c.pv && _prioNormPv(c.pv.numero) === String(p.preventa || '').trim()) || null;
+}
+function _prioCuando(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return String(ts).slice(0, 10);
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+}
+// Panel arriba de la grilla con los pedidos abiertos (solo si hay alguno).
+function _prioPanelHtml() {
+  const pend = _prioPendientes();
+  if (!pend.length) return '';
+  let h = '<div style="background:#fff8e6;border:1px solid #e0b000;border-radius:10px;padding:11px 13px;margin-bottom:12px">'
+    + '<div style="font-size:14px;font-weight:700;color:#9a7d00;margin-bottom:2px">⭐ Prioridad para pagar · ' + pend.length + ' unidad' + (pend.length === 1 ? '' : 'es') + '</div>'
+    + '<div style="font-size:12px;color:var(--vw-grey-3);margin-bottom:9px">Lo pide la administración: hasta que no se pagan, VW no libera el certificado y no se puede patentar.</div>';
+  for (const p of pend) {
+    const c = _prioCompraDe(p);
+    const modelo = c ? (c.modeloOficial || c.modelo_valeria || '') : '';
+    const serie = String(p.prioridad_serie || (c && c.serie) || '').trim();
+    let estado, accion = '';
+    if (!c) {
+      estado = '<span style="color:#cc6600;font-weight:600">sin factura de VW cargada todavía</span>';
+    } else if (c.impaga) {
+      estado = '<span style="color:#cc3300;font-weight:700">impaga</span>' + (c.vence ? ' <small style="color:#cc3300">· vto ' + escapeHtml(_cvwFechaDisp(c.vence)) + '</small>' : '')
+             + ' · <b>' + fmtPesos(_cvwBruto(c)) + '</b>';
+      accion = '<button onclick="prioIrAPagar(\'' + c.serie + '\')" style="background:#0a7a30;color:#fff;border:0;border-radius:6px;padding:4px 11px;cursor:pointer;font-size:12px;font-weight:600">pagar</button>';
+    } else {
+      estado = '<span style="color:#0a7a30;font-weight:700">✓ pagada ' + escapeHtml(c.fecha_pago_vw ? _cvwFechaDisp(c.fecha_pago_vw) : '') + '</span>';
+    }
+    h += '<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:7px 0;border-top:1px solid #f0e0b8">'
+      + '<b style="font-family:monospace;font-size:13px">' + escapeHtml(serie || '—') + '</b>'
+      + (modelo ? '<span style="font-size:12.5px">' + escapeHtml(modelo) + '</span>' : '')
+      + '<span style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 6px;font-size:10.5px;white-space:nowrap">🧾 ' + escapeHtml(p.preventa || '') + '</span>'
+      + '<span style="font-size:12.5px">' + estado + '</span>'
+      + (p.prioridad_nota ? '<span style="font-size:12px;color:#9a7d00">“' + escapeHtml(p.prioridad_nota) + '”</span>' : '')
+      + '<span style="font-size:11px;color:var(--vw-grey-3)">pedido ' + escapeHtml(_prioCuando(p.prioridad_ts)) + (p.prioridad_por ? ' · ' + escapeHtml(p.prioridad_por) : '') + '</span>'
+      + '<span style="flex:1"></span>' + accion
+      + '<button onclick="prioListo(\'' + escapeHtml(p.preventa) + '\')" title="Marcar el pedido como resuelto (lo ve la administración)" style="background:none;border:1px solid #e0b000;color:#9a7d00;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">✓ listo</button>'
+      + '</div>';
+  }
+  return h + '</div>';
+}
+// "pagar" desde el panel: abre el pago inline de esa fila y la trae a la vista.
+function prioIrAPagar(serie) {
+  comprasVWPagando = serie;
+  comprasVWBusca = '';
+  renderComprasVW();
+  setTimeout(() => {
+    const el = document.getElementById('cvwpagoinline_' + serie.replace(/[^A-Za-z0-9]/g, '_'));
+    if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus(); }
+    else alert('La unidad ' + serie + ' no está en el filtro actual. Quitá los filtros para verla.');
+  }, 60);
+}
+// Cierra el pedido (a mano o automático al registrar el pago). motivo = texto
+// que queda del lado de la administración junto con el usuario.
+async function prioCerrar(preventa, motivo) {
+  const p = prioridades.find(x => String(x.preventa) === String(preventa));
+  if (!p || p.prioridad_listo_ts) return;
+  const s = getSharedCookie() || {};
+  const por = (s.usuario || '') + (motivo ? ' (' + motivo + ')' : '');
+  const ts = new Date().toISOString();
+  p.prioridad_listo_ts = ts; p.prioridad_listo_por = por;   // optimista
+  renderComprasVW();
+  try {
+    await sbFetch('adm_ventas?preventa=eq.' + encodeURIComponent(preventa), {
+      method: 'PATCH', headers: { 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ prioridad_listo_ts: ts, prioridad_listo_por: por }),
+    });
+  } catch (e) {
+    p.prioridad_listo_ts = ''; p.prioridad_listo_por = '';
+    renderComprasVW();
+    alert('No se pudo marcar el pedido como resuelto: ' + (e.message || e));
+  }
+}
+function prioListo(preventa) { prioCerrar(preventa, ''); }
+
+// =======================================================================
 // COMPRAS VW — carga de Valeria + conciliación con Oversoft (reemplaza el Sheet)
 // =======================================================================
 let comprasVWData = null, comprasVWBusca = '', comprasVWFiltro = 'todas', comprasVWMes = '__todos__', comprasVWAbierta = '', comprasVWVence = '__todas__';
@@ -1538,6 +1656,7 @@ async function _cvwFetch(silent, fresh) {
     comprasVWData = data;
     (comprasVWData.compras || []).forEach(_cvwCalc);
     comprasDispVW = await _loadDispVW();
+    await loadPrioridades();   // ⭐ pedidos de pago de la administración (adm_ventas)
     _cvwCacheSet();
     renderComprasVW();
     const hora = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
@@ -1643,9 +1762,11 @@ function _cvwSummaryRow(c) {
   const pagando = (comprasVWPagando === c.serie);
   // fondo: vendida (PV) resaltada celeste; seleccionada ámbar; abierta celeste fuerte.
   // Se pasa por la variable --row-bg para que las columnas fijas (sticky) copien el mismo color.
+  const prio = _prioDeCompra(c);   // pedido de pago prioritario de la administración
   let rowbg = '#fff';
   if (abierta) rowbg = '#e3eeff';
   else if (sel) rowbg = '#fff7e6';
+  else if (prio) rowbg = '#fff6d9';
   else if (hasPv) rowbg = '#f0f6ff';
   const bg = ';--row-bg:' + rowbg + ';background:var(--row-bg)';
   const conciliarInline = (c.estado === 'sin_conciliar') ? ' <button onclick="event.stopPropagation();conciliarCompraVW(\'' + c.serie + '\')" title="Conciliar con Oversoft" style="background:#0a7a30;color:#fff;border:0;border-radius:5px;padding:2px 7px;cursor:pointer;font-size:10px">✓</button>' : '';
@@ -1666,7 +1787,9 @@ function _cvwSummaryRow(c) {
   let h = '<tr class="cvw-sum"' + onclickRow + '>'
     + '<td data-label="✓" onclick="event.stopPropagation()" style="text-align:center"><input type="checkbox"' + (sel ? ' checked' : '') + ' onclick="event.stopPropagation()" onchange="toggleSelCompra(\'' + c.serie + '\',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>'
     + '<td data-label="Serie" class="cvw-stick"><span title="' + txt + '" style="color:' + estCol + ';font-size:13px">' + ico + '</span> '
-    + (pendChasis ? _cvwChasisInline(c, k) : ('<b>' + escapeHtml(c.serie) + '</b>')) + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>' : '') + conciliarInline
+    + (pendChasis ? _cvwChasisInline(c, k) : ('<b>' + escapeHtml(c.serie) + '</b>'))
+    + (prio ? ' <span title="Prioridad para pagar · lo pidió la administración' + (prio.prioridad_nota ? ': ' + escapeHtml(prio.prioridad_nota) : '') + '" style="background:#b9770e;color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">⭐ prioridad</span>' : '')
+    + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>' : '') + conciliarInline
     + (c.fcVw ? '<div title="N° de factura de compra VW → Tito (Oversoft)" style="font-size:10.5px;color:var(--vw-grey-3);font-family:monospace;margin-top:1px">FC ' + escapeHtml(c.fcVw) + '</div>' : '') + '</td>'
     + '<td data-label="Mes">' + escapeHtml(c.mes || '—') + '</td>'
     + '<td data-label="Modelo">' + escapeHtml(c.modeloOficial || c.modelo_valeria || '—') + '</td>'
@@ -1815,6 +1938,7 @@ function renderComprasVW() {
     if (comprasVWFiltro === 'conciliadas' && c.estado !== 'conciliada') return false;
     if (comprasVWImpagas && !c.impaga) return false;     // toggle combinable
     if (comprasVWVendidas && !c.pv) return false;        // toggle combinable
+    if (prioSolo && !_prioDeCompra(c)) return false;     // solo pedidos de la adm
     if (qTokens.length) { const blob = [c.serie, c.modelo_valeria, c.modeloOversoft, c.color, c.fc_numero, c.fcVw, c.mes, (c.pv ? c.pv.numero + ' ' + c.pv.cliente : '')].join(' ').toLowerCase(); if (!qTokens.every(t => blob.indexOf(t) > -1)) return false; }
     return true;
   }).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.serie || '').localeCompare(String(b.serie || '')));   // más nuevo → más viejo (por carga)
@@ -1867,6 +1991,7 @@ function renderComprasVW() {
     + chip('todas', 'Todas') + chip('conciliadas', '🟢 Conciliadas') + chip('sinconciliar', '🔵 A conciliar') + chip('cargadas', '🟡 Sin Oversoft')
     + '<span style="width:1px;height:22px;background:var(--vw-grey-2);margin:0 2px"></span>'
     + tchip(comprasVWVendidas, '🧾 Vendidas', 'comprasVWVendidas=!comprasVWVendidas') + tchip(comprasVWImpagas, '🔴 Impagas', 'comprasVWImpagas=!comprasVWImpagas;if(comprasVWImpagas)comprasVWPago=\'__todas__\'')
+    + (_prioPendientes().length ? tchip(prioSolo, '⭐ Prioridad (' + _prioPendientes().length + ')', 'prioSolo=!prioSolo') : '')
     + '<input type="text" id="cvwBuscaInput" placeholder="🔍 serie, modelo, FC…" value="' + escapeHtml(comprasVWBusca) + '" oninput="onComprasVWBusca(this.value, this)" style="padding:7px 12px;border:1px solid var(--vw-grey-2);border-radius:8px;min-width:180px;font-size:13px">'
     + '<span style="font-size:12px;color:var(--vw-grey-3)">' + rows.length + ' facturas</span>'
     + '</div>';
@@ -1900,7 +2025,7 @@ function renderComprasVW() {
   for (const c of rows) h += _cvwSummaryRow(c);
   if (!rows.length) h += '<tr><td colspan="11" class="empty">Sin facturas para ese filtro.</td></tr>';
   h += '</tbody></table></div>';
-  cont.innerHTML = _comprasCardsHtml() + h;
+  cont.innerHTML = _comprasCardsHtml() + _prioPanelHtml() + h;
   _cvwSyncTopScroll();
   if (comprasVWAbierta) _cvwRecalcUI(comprasVWAbierta.replace(/[^A-Za-z0-9]/g, '_'));
 }
@@ -1968,9 +2093,11 @@ async function pagarCompraVW(serie) {
   const el = document.getElementById('cvwpagoinline_' + k) || document.getElementById('cvwpagofecha_' + k);
   const fecha = (el && el.value) ? el.value : _cvwHoyISO();   // ISO yyyy-mm-dd
   const c = (comprasVWData.compras || []).find(x => x.serie === serie); if (!c) return;
+  const prio = _prioDeCompra(c);   // pedido de la adm: se cierra solo al pagar
   c.fecha_pago_vw = fecha; c.impaga = false; comprasVWPagando = ''; renderComprasVW();
   try { const r = await _postCompraVW({ accion: 'setcompravw', serie: serie, campos: { fecha_pago_vw: fecha } }); if (r && r.error) throw new Error(r.error); }
-  catch (e) { alert('No se pudo registrar el pago: ' + e.message); }
+  catch (e) { alert('No se pudo registrar el pago: ' + e.message); return; }
+  if (prio) prioCerrar(prio.preventa, 'pagada');
 }
 async function deshacerPagoCompraVW(serie) {
   const c = (comprasVWData.compras || []).find(x => x.serie === serie); if (!c) return;
@@ -1987,8 +2114,11 @@ async function pagarSeleccionadasCompraVW() {
   for (const c of (comprasVWData.compras || [])) if (comprasVWSel.has(c.serie) && c.impaga) series.push(c.serie);
   if (!series.length) { alert('No hay impagas seleccionadas para pagar.'); return; }
   if (!confirm('¿Marcar como pagadas ' + series.length + ' unidad(es) con fecha ' + _cvwFechaDisp(fecha) + '?')) return;
+  // pedidos de prioridad de esas unidades: se cierran solos al quedar pagadas
+  const prios = comprasVWData.compras.filter(c => series.indexOf(c.serie) >= 0).map(_prioDeCompra).filter(Boolean);
   for (const c of comprasVWData.compras) if (series.indexOf(c.serie) >= 0) { c.fecha_pago_vw = fecha; c.impaga = false; }
   renderComprasVW();
+  for (const p of prios) prioCerrar(p.preventa, 'pagada');
   const results = await Promise.all(series.map(s =>
     _postCompraVW({ accion: 'setcompravw', serie: s, campos: { fecha_pago_vw: fecha } }).then(r => (r && r.error) ? s : null).catch(() => s)));
   const errs = results.filter(Boolean);
