@@ -2,6 +2,11 @@
 /**
  * sync-compras-monica.js
  *
+ * ⚠️ OBSOLETO desde el 14-sep-2026 — NO CORRER. El circuito se dio vuelta: ahora la
+ * factura PDF completa compras_vw y el portal escribe la planilla COMPRAS TGA
+ * (C:\proyectos\facturas-vw, cargar_facturas.py + sync_sheets_compras.py). Correr
+ * esto volvería a copiar planilla → portal. Se deja solo como referencia.
+ *
  * Vuelca las facturas que Monica Marandola carga en su planilla "COMPRAS TGA"
  * (1s7QlK99..., pestana `compras`) a la tabla `compras_vw` de Supabase (wjfgl),
  * que es lo que muestra la solapa Compras VW de saldos.titogonzalez.online.
