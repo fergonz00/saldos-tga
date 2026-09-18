@@ -988,13 +988,23 @@ const GUARDIAS_EDITORES = ['fngonzalez', 'fgonzalez', 'cgonzalez', 'marianom'];
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyRTqqpQMjKDL82Z5Cjd9IJWPQnINF0LAEvji8FizfXMBO8Cz0IVbTSnQnNmH_rRxz9yg/exec';
 // Backend gestion-next (reventas/FyF/costo unidad). El panel FyF lo consume directo.
 const GESTION_NEXT_URL   = 'https://gestion-next-fergonz00s-projects.vercel.app';
-const GESTION_NEXT_TOKEN = 'gtok_IE740qxp4uBANagjGH6MheFw';
-const APPS_SCRIPT_TOKEN = 'tga-saldos-K9Mx2P7vQ';
+// Credencial de TODOS los backends (Apps Script de saldos y de gestión, gestion-next):
+// la sesión firmada del SSO del portal, "usuario.exp.sig". El backend verifica el HMAC
+// contra app_config.tga_session_secret — este archivo público no lleva secretos. El
+// dueño de la firma es session_usuario (≠ usuario si hay impersonación). Sin sesión
+// firmada vigente queda vacío y el backend responde forbidden.
+const _sessTok = (() => {
+  const s = getSharedCookie();
+  if (!s || !s.session_sig || !s.session_exp) return '';
+  return (s.session_usuario || s.usuario) + '.' + s.session_exp + '.' + s.session_sig;
+})();
+const GESTION_NEXT_TOKEN = _sessTok;
+const APPS_SCRIPT_TOKEN = 'tga-saldos-K9Mx2P7vQ'; // TRANSICIÓN: pasa a _sessTok cuando el Apps Script de saldos verifique la sesión
 
 // Backend de GESTIÓN (gestion.titogonzalez.online): fuente real de Compras VW
 // (tabla compras_vw) y del Flujo financiero. Saldos lee de acá, no de la planilla.
 const GESTION_URL = 'https://script.google.com/macros/s/AKfycby13NRmtve2ojB0IMZgFPnKh3HsLSBLDca4kOduRenO97KLH3W3ILbiJfDzGYVLAUpwpQ/exec';
-const GESTION_TOKEN = 'tga-gestion-R7nQ4xK8jL';
+const GESTION_TOKEN = _sessTok;
 
 // Supabase — para acumulado diario de fondos (mismo proyecto que el portal/tasador)
 const SUPABASE_URL = 'https://wjfglsafgaltusmbnccl.supabase.co';
@@ -4812,6 +4822,11 @@ function parseFechaCorta(s) {
   const session = getSharedCookie();
   if (!session || !session.usuario) {
     showGate('Necesitás iniciar sesión en el portal.');
+    return;
+  }
+  // Sin firma vigente los backends responden forbidden: mejor decirlo acá.
+  if (!_sessTok || Number(session.session_exp) < Math.floor(Date.now() / 1000)) {
+    showGate('Tu sesión venció. Volvé a entrar al portal.');
     return;
   }
   // Sesión impersonada: se permite y se trata como el usuario impersonado
