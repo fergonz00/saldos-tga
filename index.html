@@ -1059,7 +1059,9 @@ const GUARDIAS_MOTIVOS = ['Enfermedad', 'Tema personal', 'Sin aviso', 'Accidente
 // ago–set 2026: Excel GUARDIASAGOSET.xlsx, hoja AGOSET (28-jul-2026).
 //   Vacaciones Fazzini: mié 5/ago → vuelve lun 17/ago. Vacaciones Marta: lun 24/ago → vuelve lun 31/ago.
 //   Curso Experto (Julián): mar 4/ago.
-//   ⚠ La hoja AGOSET llega hasta el lun 14/set — de ahí en adelante falta cargar.
+// set–oct 2026: Excel GUARDIASSETOCTUB.xlsx, hoja SETOCTUB (21-sep-2026). Sin vacaciones ni cursos.
+//   El lun 14/set se corrigió con SETOCTUB: trabaja Julián en vez de Loisi.
+//   ⚠ La hoja SETOCTUB llega hasta el dom 1/nov — de ahí en adelante falta cargar.
 const GUARDIAS_BASE_RAW = [
   '2026-06-01|fttt|ttt', '2026-06-02|ttft|ttt', '2026-06-03|tttf|ttt', '2026-06-04|tftt|ttt',
   '2026-06-05|fttt|ttt', '2026-06-06|ttff|fff', '2026-06-07|ffff|fff', '2026-06-08|tftt|ttt',
@@ -1089,7 +1091,20 @@ const GUARDIAS_BASE_RAW = [
   '2026-09-02|tttf|ttt', '2026-09-03|tttt|ttt', '2026-09-04|tftt|ttt', '2026-09-05|ftft|fff',
   '2026-09-06|ffff|fff', '2026-09-07|tftt|ttt', '2026-09-08|ttft|ttt', '2026-09-09|tttf|ttt',
   '2026-09-10|fttt|ttt', '2026-09-11|ttft|ttt', '2026-09-12|tftf|fff', '2026-09-13|ffff|fff',
-  '2026-09-14|fttt|ttt',
+  '2026-09-14|ttft|ttt',   // corregido con la hoja SETOCTUB (Julián en vez de Loisi)
+  // --- SETIEMBRE / OCTUBRE 2026 (hoja SETOCTUB, cargada 21-sep-2026) ---
+  '2026-09-15|tftt|ttt', '2026-09-16|tttf|ttt', '2026-09-17|tftt|ttt', '2026-09-18|fttt|ttt',
+  '2026-09-19|ftft|fff', '2026-09-20|ffff|fff', '2026-09-21|tftt|ttt', '2026-09-22|ttft|ttt',
+  '2026-09-23|tttf|ttt', '2026-09-24|fttt|ttt', '2026-09-25|fttt|ttt', '2026-09-26|tftf|fff',
+  '2026-09-27|ffff|fff', '2026-09-28|fttt|ttt', '2026-09-29|tftt|ttt', '2026-09-30|tttf|ttt',
+  '2026-10-01|ttft|ttt', '2026-10-02|tftt|ttt', '2026-10-03|ftft|fff', '2026-10-04|ffff|fff',
+  '2026-10-05|tttt|ttt', '2026-10-06|fttt|ttt', '2026-10-07|ttff|ttt', '2026-10-08|ttft|ttt',
+  '2026-10-09|fttt|ttt', '2026-10-10|tftf|fff', '2026-10-11|ffff|fff', '2026-10-12|ttft|ttt',
+  '2026-10-13|fttt|ttt', '2026-10-14|tttf|ttt', '2026-10-15|tftt|ttt', '2026-10-16|tftt|ttt',
+  '2026-10-17|ftft|fff', '2026-10-18|ffff|fff', '2026-10-19|tftt|ttt', '2026-10-20|ttft|ttt',
+  '2026-10-21|fttf|ttt', '2026-10-22|tttt|ttt', '2026-10-23|ftft|ttt', '2026-10-24|tftf|fff',
+  '2026-10-25|ffff|fff', '2026-10-26|fttt|ttt', '2026-10-27|tftt|ttt', '2026-10-28|tttf|ttt',
+  '2026-10-29|ttft|ttt', '2026-10-30|tftt|ttt', '2026-10-31|ftft|fff', '2026-11-01|ffff|fff',
 ];
 let guardiasBaseMap = null;          // fecha → { 'Entre Ríos': {VEND:estado}, ... }
 let guardiasOverrides = new Map();   // 'fecha|sucursal|vendedor' → estado
