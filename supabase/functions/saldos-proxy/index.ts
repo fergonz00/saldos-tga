@@ -22,6 +22,27 @@ const TABLAS_OK = new Set([
   "compras_vw",
 ]);
 
+// QUIÉN puede usar cada tabla. La firma sola prueba que la sesión es de alguien
+// del portal, no que ese alguien tenga Saldos: sin esto, cualquier usuario del
+// SSO podía leer y escribir tesorería y pagos llamando al proxy directo, aunque
+// la página no le mostrara la solapa. Espeja las listas de index.html
+// (ADMIN_USERS, TAB_ACCESS) y se evalúa sobre el usuario FIRMANTE: si un dueño
+// impersona a otro, manda el dueño. Al sumar a alguien a la página, sumarlo acá.
+const ADMINS = new Set(["fngonzalez", "fgonzalez", "cgonzalez", "vreyna"]);
+// Usuarios restringidos → tablas que tocan. marianom carga guardias y novedades
+// (solapa Personal): lee y escribe esas dos, y lee la grilla base.
+const ACCESO_RESTRINGIDO: Record<string, Set<string>> = {
+  marianom: new Set(["saldos_novedades", "saldos_guardias", "saldos_guardias_base"]),
+};
+// Tablas que la web solo lee: se cargan desde afuera (el Excel de guardias).
+const SOLO_LECTURA = new Set(["saldos_guardias_base"]);
+
+function puede(usuario: string, tabla: string, method: string): boolean {
+  if (SOLO_LECTURA.has(tabla) && method !== "GET") return false;
+  if (ADMINS.has(usuario)) return true;
+  return !!ACCESO_RESTRINGIDO[usuario]?.has(tabla);
+}
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -100,6 +121,9 @@ Deno.serve(async (req: Request) => {
 
   const method = String(body?.method || "GET").toUpperCase();
   if (!["GET", "POST", "PATCH", "DELETE"].includes(method)) return json({ error: "Método inválido" }, 400);
+
+  const usuario = String(body.session.usuario).trim().toLowerCase();
+  if (!puede(usuario, tabla, method)) return json({ error: "Sin permiso sobre esta tabla" }, 403);
 
   // Reenvío a PostgREST con service_role.
   const headers: Record<string, string> = {

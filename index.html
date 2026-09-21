@@ -972,6 +972,9 @@ const SHARED_COOKIE = 'tga_session';
 const SHARED_DOMAIN = '.titogonzalez.online';
 const USUARIOS_PERMITIDOS = ['fngonzalez', 'fgonzalez', 'cgonzalez', 'marianom', 'vreyna'];
 
+// ⚠ Estas listas son SOLO de la interfaz. Lo que de verdad frena el acceso a los
+// datos es supabase/functions/saldos-proxy (ADMINS / ACCESO_RESTRINGIDO): al sumar
+// o sacar a alguien acá, hacerlo también allá y redeployar el proxy.
 // Quién ve todo el sitio (admins) y qué solapas ve cada usuario restringido.
 // Un usuario que NO esté en ADMIN_USERS sólo ve las solapas de TAB_ACCESS.
 const ADMIN_USERS = ['fngonzalez', 'fgonzalez', 'cgonzalez', 'vreyna'];   // vreyna (Valeria): ve todo
