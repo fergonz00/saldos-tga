@@ -18,6 +18,7 @@ const TABLAS_OK = new Set([
   "saldos_fondos_diario",
   "saldos_novedades",
   "saldos_guardias",
+  "saldos_guardias_base", // grilla del Excel de guardias (tambien la lee el CRM)
   "compras_vw",
 ]);
 
@@ -116,7 +117,11 @@ Deno.serve(async (req: Request) => {
     const clean = path.replace(/^\/+/, "").replace(/^rest\/v1\//, "");
     const resp = await fetch(`${SUPABASE_URL}/rest/v1/${clean}`, init);
     const text = await resp.text();
-    return new Response(text, {
+    // 204/205/304 no pueden llevar cuerpo: pasar null o el constructor de Response
+    // tira "Response with null body status cannot have body" (los DELETE y los
+    // PATCH/POST con return=minimal devuelven 204). La escritura ya se aplicó.
+    const sinBody = resp.status === 204 || resp.status === 205 || resp.status === 304;
+    return new Response(sinBody ? null : text, {
       status: resp.status,
       headers: {
         ...CORS_HEADERS,
