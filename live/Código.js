@@ -10,7 +10,6 @@
  * Publicación: Deploy → Web app · Execute as: Me · Who: Anyone (con token)
  */
 
-const TOKEN = 'tga-saldos-K9Mx2P7vQ';
 const SHEET_COMPRAS = 'compras';
 const SHEET_INFORME = 'INFORME';
 
@@ -68,15 +67,14 @@ function saldosServerToken() {
   return PropertiesService.getScriptProperties().getProperty('SERVER_TOKEN') || '';
 }
 
-// TRANSICIÓN: acepta el token de servidor, la sesión firmada O el token viejo
-// (para no romper nada mientras Matías cambia los frontends). El token viejo
-// sale recién cuando todos los consumidores server-to-server estén migrados.
+// Dos formas de entrar, ninguna más: el token de SERVIDOR (server-to-server) o
+// la sesión firmada del SSO de un usuario de USUARIOS_SALDOS. El token público
+// 'tga-saldos-K9Mx2P7vQ' que estaba hardcodeado en los fronts murió el 22-9-2026.
 function autorizadoSaldos(tok) {
   var srv = saldosServerToken();
   if (srv && String(tok || '').trim() === srv) return true;
   var u = verificarSesionTGA_(tok);
-  if (u && USUARIOS_SALDOS.indexOf(u.toLowerCase()) >= 0) return true;
-  return String(tok || '').trim() === TOKEN;   // ← token viejo, sacar al final
+  return !!(u && USUARIOS_SALDOS.indexOf(u.toLowerCase()) >= 0);
 }
 
 function jsonResponse(obj) {
