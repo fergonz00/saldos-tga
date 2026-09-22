@@ -57,10 +57,23 @@ function verificarSesionTGA_(tok) {
   return hex === sig ? cuerpo.slice(0, j) : null;   // usuario firmante
 }
 
-// TRANSICIÓN: acepta la sesión firmada O el token viejo (para no romper nada
-// mientras Matías cambia los frontends). El server-to-server de gestión sigue
-// andando por el token viejo hasta el paso final.
+// Token de SERVIDOR (server-to-server: Código.js de gestión, gestion-next,
+// pg_cron saldos_foto_pedir). Del otro lado vive en app_config.saldos_server_token;
+// acá va copiado a mano en la Script Property SERVER_TOKEN, igual que el secreto
+// de sesión: este script a propósito no tiene key de Supabase ni scope de
+// UrlFetchApp, así que no puede leer app_config solo. Los dos lados se cargan
+// a mano y tienen que tener el MISMO valor (.secrets/gestion.env → SALDOS_SERVER_TOKEN).
+// Mientras la property esté vacía esto no autoriza nada.
+function saldosServerToken() {
+  return PropertiesService.getScriptProperties().getProperty('SERVER_TOKEN') || '';
+}
+
+// TRANSICIÓN: acepta el token de servidor, la sesión firmada O el token viejo
+// (para no romper nada mientras Matías cambia los frontends). El token viejo
+// sale recién cuando todos los consumidores server-to-server estén migrados.
 function autorizadoSaldos(tok) {
+  var srv = saldosServerToken();
+  if (srv && String(tok || '').trim() === srv) return true;
   var u = verificarSesionTGA_(tok);
   if (u && USUARIOS_SALDOS.indexOf(u.toLowerCase()) >= 0) return true;
   return String(tok || '').trim() === TOKEN;   // ← token viejo, sacar al final
