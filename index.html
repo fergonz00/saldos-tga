@@ -1002,7 +1002,7 @@ const _sessTok = (() => {
   return (s.session_usuario || s.usuario) + '.' + s.session_exp + '.' + s.session_sig;
 })();
 const GESTION_NEXT_TOKEN = _sessTok;
-const APPS_SCRIPT_TOKEN = 'tga-saldos-K9Mx2P7vQ'; // TRANSICIÓN: pasa a _sessTok cuando el Apps Script de saldos verifique la sesión
+const APPS_SCRIPT_TOKEN = _sessTok; // El Apps Script de SALDOS ya verifica la sesión firmada (aún acepta el token viejo durante la transición, hasta que Fer lo saque)
 
 // Backend de GESTIÓN (gestion.titogonzalez.online): fuente real de Compras VW
 // (tabla compras_vw) y del Flujo financiero. Saldos lee de acá, no de la planilla.
