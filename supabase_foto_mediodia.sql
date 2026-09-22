@@ -34,10 +34,18 @@ language plpgsql
 security definer
 set search_path = public, net
 as $fn$
-declare rid bigint;
+declare
+  rid bigint;
+  tok text;
 begin
+  -- El token de servidor sale de app_config para no tenerlo hardcodeado aca.
+  -- TRANSICION (22-sep-2026): mientras app_config.saldos_server_token no exista
+  -- sigue el token publico viejo; cuando Matias lo cargue, esto pasa solo.
+  select valor into tok from public.app_config where clave = 'saldos_server_token';
+  if tok is null or tok = '' then tok := 'tga-saldos-K9Mx2P7vQ'; end if;
+
   select net.http_get(
-    url := 'https://script.google.com/macros/s/AKfycbyRTqqpQMjKDL82Z5Cjd9IJWPQnINF0LAEvji8FizfXMBO8Cz0IVbTSnQnNmH_rRxz9yg/exec?token=tga-saldos-K9Mx2P7vQ&tipo=informe',
+    url := 'https://script.google.com/macros/s/AKfycbyRTqqpQMjKDL82Z5Cjd9IJWPQnINF0LAEvji8FizfXMBO8Cz0IVbTSnQnNmH_rRxz9yg/exec?token=' || tok || '&tipo=informe',
     timeout_milliseconds := 25000
   ) into rid;
   insert into saldos_foto_req(request_id) values (rid);
