@@ -29,6 +29,10 @@ const TABLAS_OK = new Set([
   "asist_incidencias",
   "asist_fichajes",
   "asist_sync",
+  "asist_feriados",
+  // Funciones de cálculo (solo lectura, GET): el portal y los avisos usan la misma cuenta
+  "rpc/asist_dia",
+  "rpc/asist_periodo",
 ]);
 
 // QUIÉN puede usar cada tabla. La firma sola prueba que la sesión es de alguien
@@ -45,11 +49,14 @@ const ACCESO_RESTRINGIDO: Record<string, Set<string>> = {
     "saldos_novedades", "saldos_guardias", "saldos_guardias_base",
     "asist_empleados", "asist_horarios", "asist_acuerdos", "asist_motivos",
     "asist_ausencias", "asist_incidencias", "asist_fichajes", "asist_sync",
+    "asist_feriados", "rpc/asist_dia", "rpc/asist_periodo",
   ]),
 };
 // Tablas que la web solo lee: se cargan desde afuera (el Excel de guardias, y los
 // fichajes que sube el sync del reloj ZKBio).
-const SOLO_LECTURA = new Set(["saldos_guardias_base", "asist_fichajes", "asist_sync"]);
+const SOLO_LECTURA = new Set([
+  "saldos_guardias_base", "asist_fichajes", "asist_sync", "rpc/asist_dia", "rpc/asist_periodo",
+]);
 
 function puede(usuario: string, tabla: string, method: string): boolean {
   if (SOLO_LECTURA.has(tabla) && method !== "GET") return false;
@@ -112,7 +119,7 @@ async function sesionValida(sess: any): Promise<boolean> {
 // Extrae el nombre de tabla del path PostgREST ("tesoreria_items?foo=bar" -> "tesoreria_items").
 function tablaDe(path: string): string {
   const limpio = String(path || "").replace(/^\/+/, "").replace(/^rest\/v1\//, "");
-  const m = limpio.match(/^([a-zA-Z0-9_]+)/);
+  const m = limpio.match(/^((?:rpc\/)?[a-zA-Z0-9_]+)/);
   return m ? m[1] : "";
 }
 
