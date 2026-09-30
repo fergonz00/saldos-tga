@@ -20,6 +20,15 @@ const TABLAS_OK = new Set([
   "saldos_guardias",
   "saldos_guardias_base", // grilla del Excel de guardias (tambien la lee el CRM)
   "compras_vw",
+  // Control de asistencia (portal personal.titogonzalez.online)
+  "asist_empleados",
+  "asist_horarios",
+  "asist_acuerdos",
+  "asist_motivos",
+  "asist_ausencias",
+  "asist_incidencias",
+  "asist_fichajes",
+  "asist_sync",
 ]);
 
 // QUIÉN puede usar cada tabla. La firma sola prueba que la sesión es de alguien
@@ -32,10 +41,15 @@ const ADMINS = new Set(["fngonzalez", "fgonzalez", "cgonzalez", "vreyna"]);
 // Usuarios restringidos → tablas que tocan. marianom carga guardias y novedades
 // (solapa Personal): lee y escribe esas dos, y lee la grilla base.
 const ACCESO_RESTRINGIDO: Record<string, Set<string>> = {
-  marianom: new Set(["saldos_novedades", "saldos_guardias", "saldos_guardias_base"]),
+  marianom: new Set([
+    "saldos_novedades", "saldos_guardias", "saldos_guardias_base",
+    "asist_empleados", "asist_horarios", "asist_acuerdos", "asist_motivos",
+    "asist_ausencias", "asist_incidencias", "asist_fichajes", "asist_sync",
+  ]),
 };
-// Tablas que la web solo lee: se cargan desde afuera (el Excel de guardias).
-const SOLO_LECTURA = new Set(["saldos_guardias_base"]);
+// Tablas que la web solo lee: se cargan desde afuera (el Excel de guardias, y los
+// fichajes que sube el sync del reloj ZKBio).
+const SOLO_LECTURA = new Set(["saldos_guardias_base", "asist_fichajes", "asist_sync"]);
 
 function puede(usuario: string, tabla: string, method: string): boolean {
   if (SOLO_LECTURA.has(tabla) && method !== "GET") return false;
