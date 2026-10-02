@@ -1176,7 +1176,7 @@ function renderFyf() {
   const ord = { pendiente:0, confirmado:1, cerrado:2 };
   const items = (fyfData.items || []).slice().sort((a,b) => (ord[a.estado]-ord[b.estado]) || String(a.preventa).localeCompare(String(b.preventa)));
   const P = fyfData.pendientes||0, C = fyfData.confirmados||0, Z = fyfData.cerrados||0, A = fyfData.alertas||0;
-  let h = '<p class="lead">Costo unidad de reventas (FyF $1.110.000) y acc, desde el 20/06. Confirmá lo que ya se cobró.</p>';
+  let h = '<p class="lead">Costo unidad de reventas (FyF $1.110.000; $1.300.000 en PVs desde el 02/10/2026) y acc, desde el 20/06. Confirmá lo que ya se cobró.</p>';
   h += '<div style="margin:6px 0 14px;font-size:13px">'
      + '<span style="color:#cc3300;font-weight:700">● ' + P + ' pendientes</span> &nbsp; '
      + '<span style="color:#d99200;font-weight:700">● ' + C + ' cobrados</span> &nbsp; '
