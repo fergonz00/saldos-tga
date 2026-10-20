@@ -30,6 +30,8 @@ const TABLAS_OK = new Set([
   "asist_fichajes",
   "asist_sync",
   "asist_feriados",
+  "asist_puestos",
+  "asist_puesto_asignaciones",
   // Funciones de cálculo (solo lectura, GET): el portal y los avisos usan la misma cuenta
   "rpc/asist_dia",
   "rpc/asist_periodo",
@@ -49,7 +51,7 @@ const ACCESO_RESTRINGIDO: Record<string, Set<string>> = {
     "saldos_novedades", "saldos_guardias", "saldos_guardias_base",
     "asist_empleados", "asist_horarios", "asist_acuerdos", "asist_motivos",
     "asist_ausencias", "asist_incidencias", "asist_fichajes", "asist_sync",
-    "asist_feriados", "rpc/asist_dia", "rpc/asist_periodo",
+    "asist_feriados", "asist_puestos", "asist_puesto_asignaciones", "rpc/asist_dia", "rpc/asist_periodo",
   ]),
 };
 // Tablas que la web solo lee: se cargan desde afuera (el Excel de guardias, y los
