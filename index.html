@@ -1394,8 +1394,11 @@ function _prioDeCompra(c) {
 function _prioCompraDe(p) {
   const s = String(p.prioridad_serie || '').trim().toUpperCase();
   const compras = (comprasVWData && comprasVWData.compras) || [];
-  return compras.find(c => String(c.serie || '').trim().toUpperCase() === s)
-      || compras.find(c => c.pv && _prioNormPv(c.pv.numero) === String(p.preventa || '').trim()) || null;
+  const pv = String(p.preventa || '').trim();
+  // por PV: c.pv solo existe si la venta ya está en el cache de Adm. ventas; una PV
+  // recién creada (ej. 8177/1 el 23-10) llega antes por preventaOversoft (unidades).
+  return (s && compras.find(c => String(c.serie || '').trim().toUpperCase() === s))
+      || compras.find(c => _prioNormPv(c.pv ? c.pv.numero : c.preventaOversoft) === pv && pv) || null;
 }
 function _prioCuando(ts) {
   if (!ts) return '';
@@ -1768,7 +1771,8 @@ function _cvwSummaryRow(c) {
     + '<td data-label="Serie" class="cvw-stick"><span title="' + txt + '" style="color:' + estCol + ';font-size:13px">' + ico + '</span> '
     + (pendChasis ? _cvwChasisInline(c, k) : ('<b>' + escapeHtml(c.serie) + '</b>'))
     + (prio ? ' <span title="Prioridad para pagar · lo pidió la administración' + (prio.prioridad_nota ? ': ' + escapeHtml(prio.prioridad_nota) : '') + '" style="background:#b9770e;color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">⭐ prioridad</span>' : '')
-    + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>' : '') + conciliarInline
+    + (hasPv ? ' <span title="Vendida · PV ' + escapeHtml(c.pv.numero) + '" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(c.pv.numero.replace('PV ', '')) + '</span>'
+      : (c.preventaOversoft ? ' <span title="Vendida · ' + escapeHtml(c.preventaOversoft) + ' (recién cargada en Oversoft, todavía sin datos de Adm. ventas)" style="background:var(--vw-blue);color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;white-space:nowrap">🧾 ' + escapeHtml(_prioNormPv(c.preventaOversoft)) + '</span>' : '')) + conciliarInline
     + (c.fcVw ? '<div title="N° de factura de compra VW → Tito (Oversoft)" style="font-size:10.5px;color:var(--vw-grey-3);font-family:monospace;margin-top:1px">FC ' + escapeHtml(c.fcVw) + '</div>' : '') + '</td>'
     + '<td data-label="Mes">' + escapeHtml(c.mes || '—') + '</td>'
     + '<td data-label="Modelo">' + escapeHtml(c.modeloOficial || c.modelo_valeria || '—') + '</td>'
