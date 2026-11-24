@@ -904,6 +904,7 @@ td .tes-nota { min-width: 90px; }
       <button class="tab" data-tab="bancos" onclick="setTab('bancos')">Bancos</button>
       <button class="tab" data-tab="personal" onclick="setTab('personal')">Personal</button>
       <button class="tab" data-tab="fyf" onclick="setTab('fyf')">FyF</button>
+      <button class="tab hidden" data-tab="factvw" onclick="setTab('factvw')">Facturación VW</button>
     </div>
 
     <!-- =================== PANEL FyF (reventas / costo unidad) =================== -->
@@ -913,6 +914,15 @@ td .tes-nota { min-width: 90px; }
         <button class="refresh" onclick="loadFyf(true)">Actualizar</button>
       </div>
       <div id="fyfContent"></div>
+    </section>
+
+    <!-- =================== PANEL FACTURACIÓN VW (solo Catalina y Fer) =================== -->
+    <section class="panel" id="panelFactVW">
+      <div class="toolbar">
+        <div class="updated" id="updatedAtFactVW">—</div>
+        <button class="refresh" onclick="loadComprasVW(true)">Actualizar</button>
+      </div>
+      <div id="factVWContent"></div>
     </section>
 
     <!-- =================== PANEL COMPRAS =================== -->
@@ -978,6 +988,9 @@ const USUARIOS_PERMITIDOS = ['fngonzalez', 'fgonzalez', 'cgonzalez', 'marianom',
 // Quién ve todo el sitio (admins) y qué solapas ve cada usuario restringido.
 // Un usuario que NO esté en ADMIN_USERS sólo ve las solapas de TAB_ACCESS.
 const ADMIN_USERS = ['fngonzalez', 'fgonzalez', 'cgonzalez', 'vreyna'];   // vreyna (Valeria): ve todo
+// Solapa "Facturación VW" (lo que VW nos factura por mes, neto): SOLO Catalina y Fer,
+// aunque los otros sean admins (pedido de Fer 24-11-2026).
+const FACTVW_USERS = ['fngonzalez', 'cgonzalez'];
 const TAB_ACCESS = {
   marianom: ['personal'],   // MarianoM (carga las guardias): sólo Personal
 };
@@ -1087,8 +1100,9 @@ function showGate(msg) {
   document.getElementById('gateScreen').classList.remove('hidden');
 }
 function tabsPermitidas(session) {
-  if (ADMIN_USERS.includes(session.usuario)) return ['compras', 'flujo', 'bancos', 'personal', 'fyf'];
-  return TAB_ACCESS[session.usuario] || [];
+  const extra = FACTVW_USERS.includes(session.usuario) ? ['factvw'] : [];
+  if (ADMIN_USERS.includes(session.usuario)) return ['compras', 'flujo', 'bancos', 'personal', 'fyf'].concat(extra);
+  return (TAB_ACCESS[session.usuario] || []).concat(extra);
 }
 function enterApp(session) {
   document.getElementById('gateScreen').classList.add('hidden');
@@ -1132,6 +1146,7 @@ function setTab(tab) {
     bancos:   'panelBancos',
     personal: 'panelPersonal',
     fyf:      'panelFyf',
+    factvw:   'panelFactVW',
   };
   const el = document.getElementById(map[tab]);
   if (el) el.classList.add('active');
@@ -1139,6 +1154,7 @@ function setTab(tab) {
   if (tab === 'flujo') loadFlujoSaldos();
   if (tab === 'bancos')   loadBancos();
   if (tab === 'fyf')      loadFyf();
+  if (tab === 'factvw')   loadFactVW();
   if (tab === 'personal') {
     const sub = document.querySelector('.subtab.active')?.dataset.sub || 'novedades';
     setPersonalSub(sub);
@@ -1908,6 +1924,7 @@ function onComprasVWBusca(v, el) {
   if (ne) { ne.focus(); if (start != null) { try { ne.setSelectionRange(start, start); } catch (e) {} } }
 }
 function renderComprasVW() {
+  try { renderFactVW(); } catch (e) { console.error('renderFactVW', e); }   // solapa Facturacion VW usa los mismos datos
   const cont = document.getElementById('comprasVWContent');
   if (!cont) return;
   if (!comprasVWData || !Array.isArray(comprasVWData.compras)) { cont.innerHTML = '<div class="empty">Sin datos.</div>'; return; }
@@ -4756,6 +4773,138 @@ function fmtFechaLarga(d) {
 // =======================================================================
 // HELPERS
 // =======================================================================
+// ============ Facturación VW por mes (solo Catalina y Fer) ============
+// Lo que VW nos factura, NETO: sin IVA, sin percepciones (IIBB 0,6% y desde nov-26
+// IVA 3% autos / 1,5% Amarok) y sin los gastos que VW suma por unidad (flete,
+// gastos de administración, seguro). Se agrupa por el mes de compra (columna "mes").
+// Neto de la factura: el de Oversoft (base imponible de la FC de VW) → si no, el que
+// cargó Valeria → si no, el total sin IVA ni percepciones (estimado).
+// Gastos VW: fijos por gama (medidos en las 47 FC de oct-26 y en nov-26); VW no los
+// discrimina en ningún dato que tengamos por unidad, así que son ESTIMADOS (±$30k/u).
+let factVWSel = null;          // Set de meses tildados
+let factVWAbierto = '';        // mes con el detalle desplegado
+const _FV_MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+function _fvMesKey(mes) {     // 'noviembre-26' → '2026-11'
+  const m = String(mes || '').trim().toLowerCase().match(/^([a-z]+)-(\d{2})$/);
+  if (!m) return '';
+  const i = _FV_MESES.indexOf(m[1]);
+  return i < 0 ? '' : (2000 + Number(m[2])) + '-' + String(i + 1).padStart(2, '0');
+}
+function _fvGastos(modelo, key) {
+  const n = String(modelo || '').toLowerCase();
+  const nov = key >= '2026-11';
+  if (/amarok|tiguan|vento|taos/.test(n)) return nov ? 573353 : 570503;
+  if (/polo|virtus|saveiro/.test(n)) return nov ? 505000 : 501851;
+  return nov ? 513343 : 510781;
+}
+function _fvFila(c) {
+  const modelo = c.modeloOficial || c.modelo_valeria || '';
+  const key = _fvMesKey(c.mes);
+  const rate = c.ivaRate || _cvwIva(modelo);
+  const amarok = /amarok/i.test(modelo);
+  const total = Number(c.fcVwTotal) || Number(c.importe_saldo) || 0;
+  let neto = Number(c.fcVwNeto) || 0, forma = 'oversoft';
+  if (!(neto > 0) && Number(c.neto) > 0) { neto = Number(c.neto); forma = 'valeria'; }
+  if (!(neto > 0) && total > 0) {
+    const percIva = key >= '2026-11' ? (amarok ? 0.015 : 0.03) : 0;
+    neto = total / (1 + rate + 0.006 + percIva); forma = 'estimado';
+  }
+  if (!(neto > 0)) return { c, key, modelo, total: 0, neto: 0, gastos: 0, auto: 0, forma: 'sin' };
+  const gastos = _fvGastos(modelo, key);
+  return { c, key, modelo, total: total || neto * (1 + rate), neto, gastos, auto: neto - gastos, forma };
+}
+function loadFactVW() {
+  if (!comprasVWData) { loadComprasVW(); }
+  else if ((comprasVWData.compras || []).length && !('fcVwNeto' in comprasVWData.compras[0])) _cvwFetch(true, true);  // cache viejo sin el neto de Oversoft
+  renderFactVW();
+}
+function factVWToggle(key, on) {
+  if (on) factVWSel.add(key); else factVWSel.delete(key);
+  renderFactVW();
+}
+function factVWTodos(on) {
+  factVWSel = new Set(on ? Object.keys(window._fvMeses || {}) : []);
+  renderFactVW();
+}
+function factVWDetalle(key) { factVWAbierto = factVWAbierto === key ? '' : key; renderFactVW(); }
+function renderFactVW() {
+  const cont = document.getElementById('factVWContent');
+  if (!cont) return;
+  const up = document.getElementById('updatedAtFactVW');
+  const upC = document.getElementById('updatedAtComprasVW');
+  if (up && upC) up.textContent = upC.textContent;
+  if (!comprasVWData) { cont.innerHTML = '<div class="empty">Cargando facturas…</div>'; return; }
+  const meses = {};
+  for (const c of (comprasVWData.compras || [])) {
+    const f = _fvFila(c);
+    if (!f.key) continue;
+    const m = meses[f.key] || (meses[f.key] = { key: f.key, filas: [], n: 0, sinImp: 0, est: 0, total: 0, neto: 0, gastos: 0, auto: 0 });
+    m.filas.push(f);
+    if (f.forma === 'sin') { m.sinImp++; continue; }
+    m.n++; if (f.forma === 'estimado') m.est++;
+    m.total += f.total; m.neto += f.neto; m.gastos += f.gastos; m.auto += f.auto;
+  }
+  window._fvMeses = meses;
+  const keys = Object.keys(meses).sort().reverse();
+  if (!factVWSel) factVWSel = new Set(keys.slice(0, 1));
+  const sel = { n: 0, total: 0, neto: 0, gastos: 0, auto: 0, meses: 0, sinImp: 0 };
+  for (const k of keys) if (factVWSel.has(k)) {
+    const m = meses[k]; sel.meses++;
+    sel.n += m.n; sel.total += m.total; sel.neto += m.neto; sel.gastos += m.gastos; sel.auto += m.auto; sel.sinImp += m.sinImp;
+  }
+  const nombreMes = k => { const [a, mm] = k.split('-'); const t = _FV_MESES[Number(mm) - 1]; return t.charAt(0).toUpperCase() + t.slice(1) + ' ' + a; };
+  const td = 'padding:8px 10px;border-bottom:1px solid #e5e7eb;';
+  const num = td + 'text-align:right;white-space:nowrap;';
+  let h = '<div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));">'
+    + '<div class="card"><div class="label">Meses elegidos</div><div class="value">' + sel.meses + '</div><div class="sub">' + (sel.meses ? keys.filter(k => factVWSel.has(k)).map(nombreMes).reverse().join(', ') : 'Tildá uno o más meses abajo') + '</div></div>'
+    + '<div class="card"><div class="label">Unidades</div><div class="value">' + sel.n + '</div><div class="sub">' + (sel.sinImp ? '+ ' + sel.sinImp + ' sin factura todavía (no suman)' : 'facturadas por VW') + '</div></div>'
+    + '<div class="card good"><div class="label">Neto de las unidades</div><div class="value">' + fmtMoney(sel.auto) + '</div><div class="sub">sin impuestos ni gastos de VW</div></div>'
+    + '<div class="card"><div class="label">Total facturado (con impuestos)</div><div class="value">' + fmtMoney(sel.total) + '</div><div class="sub">Neto factura ' + fmtMoney(sel.neto) + ' · gastos VW ' + fmtMoney(sel.gastos) + '</div></div>'
+    + '</div>';
+  h += '<div style="margin:10px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+    + '<button class="refresh" onclick="factVWTodos(true)">Tildar todos</button>'
+    + '<button class="refresh" onclick="factVWTodos(false)">Destildar</button>'
+    + '<span style="font-size:12px;color:#64748b">Tildá los meses que quieras sumar · tocá el nombre del mes para ver las unidades.</span></div>';
+  h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:720px"><thead><tr style="background:#f1f5f9;text-align:left">'
+    + '<th style="' + td + 'width:32px"></th><th style="' + td + '">Mes</th><th style="' + num + '">Unidades</th>'
+    + '<th style="' + num + '">Total factura<br><span style="font-weight:400;font-size:11px">con impuestos</span></th>'
+    + '<th style="' + num + '">Neto factura<br><span style="font-weight:400;font-size:11px">sin IVA ni percep.</span></th>'
+    + '<th style="' + num + '">Gastos VW<br><span style="font-weight:400;font-size:11px">flete, adm., seguro</span></th>'
+    + '<th style="' + num + '">Neto unidades</th></tr></thead><tbody>';
+  for (const k of keys) {
+    const m = meses[k];
+    const on = factVWSel.has(k);
+    h += '<tr style="' + (on ? 'background:#eff6ff;' : '') + '">'
+      + '<td style="' + td + '"><input type="checkbox" ' + (on ? 'checked ' : '') + 'onchange="factVWToggle(\'' + k + '\', this.checked)"></td>'
+      + '<td style="' + td + 'cursor:pointer;font-weight:600;color:#001e50" onclick="factVWDetalle(\'' + k + '\')">' + (factVWAbierto === k ? '▾ ' : '▸ ') + nombreMes(k)
+      + (m.est ? ' <span title="Unidades sin neto en Oversoft ni cargado: se estimó sacando IVA y percepciones del total" style="font-size:11px;color:#b45309">(' + m.est + ' est.)</span>' : '') + '</td>'
+      + '<td style="' + num + '">' + m.n + (m.sinImp ? ' <span style="font-size:11px;color:#94a3b8">+' + m.sinImp + ' s/fc</span>' : '') + '</td>'
+      + '<td style="' + num + '">' + fmtMoney(m.total) + '</td>'
+      + '<td style="' + num + '">' + fmtMoney(m.neto) + '</td>'
+      + '<td style="' + num + 'color:#64748b">− ' + fmtMoney(m.gastos) + '</td>'
+      + '<td style="' + num + 'font-weight:700">' + fmtMoney(m.auto) + '</td></tr>';
+    if (factVWAbierto === k) {
+      const filas = m.filas.slice().sort((a, b) => String(a.modelo).localeCompare(String(b.modelo)));
+      h += '<tr><td colspan="7" style="padding:0 0 8px 32px;background:#f8fafc"><table style="width:100%;border-collapse:collapse;font-size:12px">'
+        + '<tr style="color:#64748b;text-align:left"><th style="padding:4px 8px">Serie</th><th style="padding:4px 8px">Modelo</th><th style="padding:4px 8px;text-align:right">Total</th><th style="padding:4px 8px;text-align:right">Neto factura</th><th style="padding:4px 8px;text-align:right">Gastos VW</th><th style="padding:4px 8px;text-align:right">Neto unidad</th></tr>';
+      for (const f of filas) {
+        const nota = f.forma === 'sin' ? ' <span style="color:#94a3b8">sin factura</span>' : f.forma === 'estimado' ? ' <span style="color:#b45309">est.</span>' : '';
+        h += '<tr><td style="padding:3px 8px">' + escapeHtml(f.c.serie) + '</td><td style="padding:3px 8px">' + escapeHtml(f.modelo) + nota + '</td>'
+          + '<td style="padding:3px 8px;text-align:right">' + (f.total ? fmtMoney(f.total) : '—') + '</td>'
+          + '<td style="padding:3px 8px;text-align:right">' + (f.neto ? fmtMoney(f.neto) : '—') + '</td>'
+          + '<td style="padding:3px 8px;text-align:right;color:#64748b">' + (f.gastos ? '− ' + fmtMoney(f.gastos) : '—') + '</td>'
+          + '<td style="padding:3px 8px;text-align:right;font-weight:600">' + (f.auto ? fmtMoney(f.auto) : '—') + '</td></tr>';
+      }
+      h += '</table></td></tr>';
+    }
+  }
+  h += '</tbody></table></div>'
+    + '<p style="font-size:11.5px;color:#64748b;margin-top:10px;line-height:1.5">El mes es el de la compra a VW. <b>Neto factura</b>: base imponible de la factura de VW en Oversoft (sin IVA ni percepciones de IIBB/IVA). '
+    + '<b>Gastos VW</b>: los renglones de flete, gastos de administración y seguro que VW suma a cada unidad, por gama (≈ $502k–573k); son estimados, pueden diferir unos miles por unidad. '
+    + '<b>Neto unidades</b> = neto factura − gastos VW. No descuenta el whosale (vuelve después por nota de crédito).</p>';
+  cont.innerHTML = h;
+}
+
 function fmtMoney(n) {
   const num = Number(n) || 0;
   return '$ ' + Math.round(num).toLocaleString('es-AR');
