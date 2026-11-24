@@ -1581,11 +1581,12 @@ function _cvwCalc(c) {
   c.iibbEr = Number(c.iibb_er) || 0;
   c.iibbCaba = Number(c.iibb_caba) || 0;
   c.iibbBsas = Number(c.iibb_bsas) || 0;
+  c.percepIva = Number(c.percep_iva) || 0;   // desde nov-26 la factura de VW trae Percepción de IVA
   c.netoGravado = (netoMan != null) ? Math.round(netoMan * 100) / 100 : Math.round((bruto / (1 + rate)) * 100) / 100;
   c.iva = (ivaMan != null) ? Math.round(ivaMan * 100) / 100 : Math.round((bruto - c.netoGravado) * 100) / 100;
   // ¿cargó algún componente a mano? entonces validamos que cuadre con el total.
-  c.tieneDesglose = (netoMan != null) || (ivaMan != null) || !!c.iibbEr || !!c.iibbCaba || !!c.iibbBsas;
-  c.sumDesglose = Math.round((c.netoGravado + c.iva + c.iibbEr + c.iibbCaba + c.iibbBsas) * 100) / 100;
+  c.tieneDesglose = (netoMan != null) || (ivaMan != null) || !!c.iibbEr || !!c.iibbCaba || !!c.iibbBsas || !!c.percepIva;
+  c.sumDesglose = Math.round((c.netoGravado + c.iva + c.iibbEr + c.iibbCaba + c.iibbBsas + c.percepIva) * 100) / 100;
   c.descuadre = Math.round((bruto - c.sumDesglose) * 100) / 100;   // total − suma (≈0 = cuadra)
   c.control = c.brutoCalc;   // "Control" pasa a ser el total (== suma del desglose si cuadra)
 }
@@ -1840,6 +1841,7 @@ function _cvwDetailRow(c, k) {
     + fldT('iibb_er', 'IIBB Entre Ríos $', (c.iibb_er == null ? '' : c.iibb_er))
     + fldT('iibb_caba', 'IIBB CABA $', (c.iibb_caba == null ? '' : c.iibb_caba))
     + fldT('iibb_bsas', 'IIBB Bs As $', (c.iibb_bsas == null ? '' : c.iibb_bsas))
+    + fldT('percep_iva', 'Percep. IVA $', (c.percep_iva == null ? '' : c.percep_iva))
     + '</div>'
     + '<div id="cvwrec_' + k + '" style="margin-top:9px;font-size:13px"></div>'
     + '</div>';
@@ -2040,7 +2042,7 @@ function _cvwRecalcUI(k) {
   if (!el) return;
   const g = id => { const e = document.getElementById('cvw_' + id + '_' + k); return e ? (parseFloat(e.value) || 0) : 0; };
   const total = g('importe_saldo');
-  const sum = g('neto') + g('iva_monto') + g('iibb_er') + g('iibb_caba') + g('iibb_bsas');
+  const sum = g('neto') + g('iva_monto') + g('iibb_er') + g('iibb_caba') + g('iibb_bsas') + g('percep_iva');
   const diff = Math.round((total - sum) * 100) / 100;
   const ar = n => Math.round(n).toLocaleString('es-AR');
   if (!total && !sum) { el.innerHTML = '<span style="color:var(--vw-grey-3)">Cargá el total y el desglose para validar que cuadre.</span>'; return; }
@@ -2056,8 +2058,8 @@ async function guardarCompraVW(serie) {
   const k = serie.replace(/[^A-Za-z0-9]/g, '_');
   const c = (comprasVWData.compras || []).find(x => x.serie === serie); if (!c) return;
   const campos = {};
-  const NUM = ['importe_saldo', 'neto', 'iva_monto', 'iibb_er', 'iibb_caba', 'iibb_bsas'];
-  for (const f of ['mes', 'modelo_valeria', 'color', 'fc_numero', 'fecha_fc', 'vence', 'fecha_pago_vw', 'importe_saldo', 'neto', 'iva_monto', 'iibb_er', 'iibb_caba', 'iibb_bsas']) {
+  const NUM = ['importe_saldo', 'neto', 'iva_monto', 'iibb_er', 'iibb_caba', 'iibb_bsas', 'percep_iva'];
+  for (const f of ['mes', 'modelo_valeria', 'color', 'fc_numero', 'fecha_fc', 'vence', 'fecha_pago_vw', 'importe_saldo', 'neto', 'iva_monto', 'iibb_er', 'iibb_caba', 'iibb_bsas', 'percep_iva']) {
     const el = document.getElementById('cvw_' + f + '_' + k);
     if (el) { campos[f] = el.value.trim(); c[f] = NUM.indexOf(f) >= 0 ? (el.value.trim() === '' ? null : Number(el.value)) : el.value.trim(); }
   }
